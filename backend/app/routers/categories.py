@@ -1032,8 +1032,9 @@ def ai_bulk_apply(
     
     db.commit()
     
-    # Auto-apply all rules to recategorize ALL transactions (since rules were updated)
-    if request.auto_create_rules and updated_categories:
+    # Auto-apply all rules to recategorize ALL transactions when rules are involved
+    # This ensures new patterns are applied to all matching transactions, not just the specific merchants
+    if request.auto_create_rules:
         category_service = CategoryService()
         additional_affected = category_service.categorize_transactions(db, force_recategorize_all=True)
         transactions_affected += additional_affected
