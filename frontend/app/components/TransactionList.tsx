@@ -48,6 +48,8 @@ export default function TransactionList({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
+  const [sortBy, setSortBy] = useState<'date' | 'amount'>('date');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   
   // Load page size from localStorage, default to 20
   const [pageSize, setPageSize] = useState(() => {
@@ -58,10 +60,10 @@ export default function TransactionList({
     return 20;
   });
 
-  // Reset to page 1 when filters or selected categories change
+  // Reset to page 1 when filters, selected categories, or sorting changes
   useEffect(() => {
     setCurrentPage(1);
-  }, [filters, filterMode, filteredCategories]);
+  }, [filters, filterMode, filteredCategories, sortBy, sortOrder]);
 
   useEffect(() => {
     fetchTransactions(currentPage, filters || {
@@ -71,7 +73,7 @@ export default function TransactionList({
       accounts: [],
       merchant: ""
     });
-  }, [currentPage, filters, filterMode, filteredCategories, pageSize]);
+  }, [currentPage, filters, filterMode, filteredCategories, pageSize, sortBy, sortOrder]);
   
   // Save page size to localStorage when it changes
   const handlePageSizeChange = (newSize: number) => {
@@ -105,6 +107,8 @@ export default function TransactionList({
       const params = new URLSearchParams();
       params.append("page", page.toString());
       params.append("page_size", pageSize.toString());
+      params.append("sort_by", sortBy);
+      params.append("sort_order", sortOrder);
       
       if (appliedFilters.startDate) params.append("start_date", appliedFilters.startDate);
       if (appliedFilters.endDate) params.append("end_date", appliedFilters.endDate);
@@ -254,6 +258,40 @@ export default function TransactionList({
     }).format(amount);
   };
   
+  const handleSort = (field: 'date' | 'amount') => {
+    if (sortBy === field) {
+      // Toggle order if clicking the same field
+      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+    } else {
+      // Default to desc for new field
+      setSortBy(field);
+      setSortOrder('desc');
+    }
+  };
+  
+  const SortIcon = ({ field }: { field: 'date' | 'amount' }) => {
+    if (sortBy !== field) {
+      // Show neutral icon when not sorted by this field
+      return (
+        <svg className="w-4 h-4 opacity-30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+        </svg>
+      );
+    }
+    if (sortOrder === 'asc') {
+      return (
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+        </svg>
+      );
+    }
+    return (
+      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+      </svg>
+    );
+  };
+  
   // Show empty state if all transactions are filtered out
   if (filteredTransactions.length === 0 && (filterMode === 'whitelist' || filterMode === 'blacklist')) {
     return (
@@ -279,8 +317,14 @@ export default function TransactionList({
           <table className="min-w-full divide-y divide-[var(--color-border-light)]">
             <thead className="bg-[var(--color-bg-secondary)]">
               <tr>
-                <th className="px-6 py-3 text-left text-label uppercase tracking-wider text-[var(--color-text-secondary)]">
-                  Date
+                <th 
+                  onClick={() => handleSort('date')}
+                  className="px-6 py-3 text-left text-label uppercase tracking-wider text-[var(--color-text-secondary)] cursor-pointer hover:text-[var(--color-text-primary)] transition-colors select-none"
+                >
+                  <div className="flex items-center gap-2">
+                    Date
+                    <SortIcon field="date" />
+                  </div>
                 </th>
                 <th className="px-6 py-3 text-left text-label uppercase tracking-wider text-[var(--color-text-secondary)]">
                   Merchant
@@ -291,8 +335,14 @@ export default function TransactionList({
                 <th className="px-6 py-3 text-left text-label uppercase tracking-wider text-[var(--color-text-secondary)]">
                   Account
                 </th>
-                <th className="px-6 py-3 text-right text-label uppercase tracking-wider text-[var(--color-text-secondary)]">
-                  Amount
+                <th 
+                  onClick={() => handleSort('amount')}
+                  className="px-6 py-3 text-right text-label uppercase tracking-wider text-[var(--color-text-secondary)] cursor-pointer hover:text-[var(--color-text-primary)] transition-colors select-none"
+                >
+                  <div className="flex items-center justify-end gap-2">
+                    Amount
+                    <SortIcon field="amount" />
+                  </div>
                 </th>
               </tr>
             </thead>

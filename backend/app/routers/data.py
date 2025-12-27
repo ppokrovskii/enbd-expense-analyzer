@@ -68,10 +68,12 @@ def get_transactions(
     merchant: Optional[str] = Query(None, description="Filter by merchant substring"),
     exclude_transfers: bool = Query(False, description="Exclude internal transfers"),
     page: int = Query(1, ge=1, description="Page number"),
-    page_size: int = Query(50, ge=1, le=1000, description="Number of items per page")
+    page_size: int = Query(50, ge=1, le=1000, description="Number of items per page"),
+    sort_by: str = Query('date', description="Sort by field: 'date' or 'amount'"),
+    sort_order: str = Query('desc', description="Sort order: 'asc' or 'desc'")
 ):
     """
-    Get transactions with optional filtering and pagination.
+    Get transactions with optional filtering, pagination, and sorting.
     
     Uses TransactionQueryService for consistent filtering logic.
     """
@@ -84,7 +86,9 @@ def get_transactions(
         merchant=merchant,
         exclude_transfers=exclude_transfers,
         page=page,
-        page_size=page_size
+        page_size=page_size,
+        sort_by=sort_by,
+        sort_order=sort_order
     )
     
     # Calculate total amount for ALL filtered transactions (not just current page)
@@ -97,7 +101,9 @@ def get_transactions(
         merchant=merchant,
         exclude_transfers=exclude_transfers,
         page=1,
-        page_size=total  # Get all transactions to calculate total amount
+        page_size=total,  # Get all transactions to calculate total amount
+        sort_by=sort_by,
+        sort_order=sort_order
     )
     
     total_amount = sum(abs(float(t.amount_signed or 0)) for t in all_transactions)

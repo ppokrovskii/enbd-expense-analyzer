@@ -83,10 +83,16 @@ class TransactionQueryService:
         merchant: Optional[str] = None,
         exclude_transfers: bool = False,
         page: int = 1,
-        page_size: int = 50
+        page_size: int = 50,
+        sort_by: str = 'date',
+        sort_order: str = 'desc'
     ):
         """
         Get paginated transactions with consistent filtering.
+        
+        Args:
+            sort_by: Field to sort by ('date' or 'amount')
+            sort_order: Sort order ('asc' or 'desc')
         
         Returns: (transactions, total_count)
         """
@@ -106,10 +112,20 @@ class TransactionQueryService:
         # Get total count
         total = query.count()
         
-        # Apply pagination and ordering
-        transactions = query.order_by(
-            Transaction.date.desc()
-        ).offset(
+        # Determine sort field
+        if sort_by == 'amount':
+            sort_field = func.abs(Transaction.amount_signed)
+        else:  # default to date
+            sort_field = Transaction.date
+        
+        # Apply sort order
+        if sort_order == 'asc':
+            query = query.order_by(sort_field.asc())
+        else:  # default to desc
+            query = query.order_by(sort_field.desc())
+        
+        # Apply pagination
+        transactions = query.offset(
             (page - 1) * page_size
         ).limit(page_size).all()
         
