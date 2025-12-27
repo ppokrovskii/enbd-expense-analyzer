@@ -55,6 +55,8 @@ Access at: `http://localhost:3000`
 ### Categories Settings Page
 Accessible via ⚙️ button in top navigation.
 
+**Auto Re-categorization**: When you create or update a rule, all existing transactions are automatically re-categorized in real-time.
+
 ```
 ┌─────────────────────────────────────────────────────────┐
 │ Category Management                          [🔙 Back]  │
@@ -219,6 +221,10 @@ services:
 ✅ **Sync filters** between chart and list  
 ✅ **Category management UI**  
 ✅ **AI categorization button**  
+✅ **Auto re-categorization** when rules are created/updated  
+✅ **Merchant search** (substring)  
+✅ **Deduplication** (hash-based)  
+✅ **Run in Docker** (single command)  
 ✅ **Docker Compose** deployment  
 
 ### Nice to Have

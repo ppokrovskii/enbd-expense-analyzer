@@ -66,7 +66,7 @@ def get_transactions(
     categories: Optional[List[str]] = Query(None, description="Filter by categories"),
     accounts: Optional[List[str]] = Query(None, description="Filter by accounts"),
     merchant: Optional[str] = Query(None, description="Filter by merchant substring"),
-    exclude_transfers: bool = Query(True, description="Exclude internal transfers"),
+    exclude_transfers: bool = Query(False, description="Exclude internal transfers"),
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(50, ge=1, le=1000, description="Number of items per page")
 ):
@@ -119,7 +119,7 @@ def get_weekly_chart_data(
     categories: Optional[List[str]] = Query(None, description="Filter by categories"),
     accounts: Optional[List[str]] = Query(None, description="Filter by accounts"),
     merchant: Optional[str] = Query(None, description="Filter by merchant substring"),
-    exclude_transfers: bool = Query(True, description="Exclude internal transfers")
+    exclude_transfers: bool = Query(False, description="Exclude internal transfers")
 ):
     """
     Get aggregated data for weekly stacked column chart.
@@ -166,7 +166,7 @@ def get_monthly_chart_data(
     categories: Optional[List[str]] = Query(None, description="Filter by categories"),
     accounts: Optional[List[str]] = Query(None, description="Filter by accounts"),
     merchant: Optional[str] = Query(None, description="Filter by merchant substring"),
-    exclude_transfers: bool = Query(True, description="Exclude internal transfers")
+    exclude_transfers: bool = Query(False, description="Exclude internal transfers")
 ):
     """
     Get aggregated data for monthly stacked column chart.
@@ -273,5 +273,46 @@ def get_filter_options(db: Session = Depends(get_db)):
         "accounts": accounts_list,
         "min_date": min_date.isoformat() if min_date else None,
         "max_date": max_date.isoformat() if max_date else None
+    }
+
+
+class UpdateTransactionCategoryRequest(BaseModel):
+    """Request model for updating a transaction's category."""
+    category: str
+
+
+@router.patch("/transactions/{transaction_id}/category")
+def update_transaction_category(
+    transaction_id: int,
+    request: UpdateTransactionCategoryRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Update the category of a specific transaction.
+    
+    Args:
+        transaction_id: The ID of the transaction to update
+        request: The new category to assign
+        db: Database session
+        
+    Returns:
+        The updated transaction
+    """
+    # Find the transaction
+    transaction = db.query(Transaction).filter(Transaction.id == transaction_id).first()
+    
+    if not transaction:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+    
+    # Update the category
+    transaction.category = request.category
+    db.commit()
+    db.refresh(transaction)
+    
+    return {
+        "id": transaction.id,
+        "merchant": transaction.merchant,
+        "category": transaction.category,
+        "message": "Category updated successfully"
     }
 

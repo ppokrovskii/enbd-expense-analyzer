@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   BarChart,
   Bar,
@@ -29,29 +29,86 @@ interface SpendingChartProps {
   filters: ChartFilters;
   onGroupByChange?: (value: "week" | "month") => void;
   onCategoryToggle?: (category: string) => void;
-  excludedCategories?: string[];
+  onCategoryExclude?: (category: string) => void;
+  filterMode?: 'none' | 'whitelist' | 'blacklist';
+  filteredCategories?: string[];
   allAvailableCategories?: string[]; // All categories from API (including transfers)
   onPeriodClick?: (period: string) => void;
+  onClearFilters?: () => void;
 }
 
 export default function SpendingChart({ 
   filters, 
   onGroupByChange, 
-  onCategoryToggle, 
-  excludedCategories = [], 
+  onCategoryToggle,
+  onCategoryExclude,
+  filterMode = 'none',
+  filteredCategories = [],
   allAvailableCategories = [],
-  onPeriodClick
+  onPeriodClick,
+  onClearFilters
 }: SpendingChartProps) {
   const [chartData, setChartData] = useState<any>(null);
+  const [categoryTotals, setCategoryTotals] = useState<any>(null); // Separate state for category totals
   const [loading, setLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false); // New state for subsequent loads
   const [error, setError] = useState<string | null>(null);
+  const fetchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
-    fetchChartData();
-  }, [filters]);
+    // Debounce rapid filter changes to prevent jumping
+    if (fetchTimeoutRef.current) {
+      clearTimeout(fetchTimeoutRef.current);
+    }
+
+    fetchTimeoutRef.current = setTimeout(() => {
+      fetchChartData();
+      fetchCategoryTotals(); // Fetch category totals separately
+    }, 100); // 100ms debounce
+
+    return () => {
+      if (fetchTimeoutRef.current) {
+        clearTimeout(fetchTimeoutRef.current);
+      }
+    };
+  }, [filters.startDate, filters.endDate, filters.accounts, filters.merchant, filters.groupBy, filterMode, filteredCategories]);
+
+  const fetchCategoryTotals = async () => {
+    // Fetch totals for all categories without category filter
+    try {
+      const endpoint = filters.groupBy === "month" ? "/api/chart/monthly" : "/api/chart/weekly";
+      const params = new URLSearchParams();
+
+      if (filters.startDate) params.append("start_date", filters.startDate);
+      if (filters.endDate) params.append("end_date", filters.endDate);
+      
+      // DO NOT send categories filter - we want totals for ALL categories
+      
+      filters.accounts?.forEach((acc) => params.append("accounts", acc));
+      if (filters.merchant) params.append("merchant", filters.merchant);
+
+      const response = await fetch(
+        `http://localhost:8000${endpoint}${params.toString() ? `?${params.toString()}` : ""}`
+      );
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch category totals: ${response.statusText}`);
+      }
+
+      const result = await response.json();
+      setCategoryTotals(result);
+    } catch (err) {
+      console.error("Failed to fetch category totals:", err);
+    }
+  };
 
   const fetchChartData = async () => {
-    setLoading(true);
+    // Only show full loading state on initial load
+    if (chartData === null) {
+      setLoading(true);
+    } else {
+      setIsRefreshing(true); // Subtle refresh state for updates
+    }
     setError(null);
 
     try {
@@ -60,7 +117,18 @@ export default function SpendingChart({
 
       if (filters.startDate) params.append("start_date", filters.startDate);
       if (filters.endDate) params.append("end_date", filters.endDate);
-      filters.categories?.forEach((cat) => params.append("categories", cat));
+      
+      // Smart filter: whitelist or blacklist mode
+      if (filterMode === 'whitelist' && filteredCategories.length > 0) {
+        // Whitelist mode: only show selected categories
+        filteredCategories.forEach((cat) => params.append("categories", cat));
+      } else if (filterMode === 'blacklist' && filteredCategories.length > 0 && allAvailableCategories.length > 0) {
+        // Blacklist mode: show all except selected categories
+        const includedCategories = allAvailableCategories.filter(cat => !filteredCategories.includes(cat));
+        includedCategories.forEach((cat) => params.append("categories", cat));
+      }
+      // If filterMode is 'none', don't send categories filter at all (show everything)
+      
       filters.accounts?.forEach((acc) => params.append("accounts", acc));
       if (filters.merchant) params.append("merchant", filters.merchant);
 
@@ -78,6 +146,7 @@ export default function SpendingChart({
       setError(err instanceof Error ? err.message : "Failed to load chart data");
     } finally {
       setLoading(false);
+      setIsRefreshing(false);
     }
   };
 
@@ -129,10 +198,19 @@ export default function SpendingChart({
     ? allAvailableCategories 
     : (chartData?.categories || []);
   
-  // Filter out excluded categories for chart display only
-  const displayCategories = legendCategories.filter(
-    (cat: string) => !excludedCategories.includes(cat)
-  );
+  // Determine which categories to display in chart based on filter mode
+  const displayCategories = (() => {
+    if (filterMode === 'whitelist' && filteredCategories.length > 0) {
+      // Whitelist mode: only show selected categories
+      return legendCategories.filter((cat: string) => filteredCategories.includes(cat));
+    } else if (filterMode === 'blacklist' && filteredCategories.length > 0) {
+      // Blacklist mode: show all except selected categories
+      return legendCategories.filter((cat: string) => !filteredCategories.includes(cat));
+    } else {
+      // No filter: show all categories
+      return legendCategories;
+    }
+  })();
   
   // For each category, determine if it's income or expense
   const categoryTypes: Record<string, "income" | "expense"> = {};
@@ -164,12 +242,12 @@ export default function SpendingChart({
     (cat: string) => categoryTypes[cat] === "income"
   );
 
-  // Calculate totals per category to sort them (use all categories for legend)
-  const categoryTotals: Record<string, number> = {};
+  // Calculate totals per category to sort them (for chart bar stacking, use filtered chartData)
+  const categorySortingTotals: Record<string, number> = {};
   allExpenseCategories.forEach((cat: string) => {
     // For categories that might not be in chartData (e.g., excluded by default like transfers)
     // we need to handle them gracefully
-    categoryTotals[cat] = chartData?.data
+    categorySortingTotals[cat] = chartData?.data
       ? chartData.data
           .filter((d: any) => d.category === cat)
           .reduce((sum: number, d: any) => sum + Number(d.total), 0)
@@ -178,7 +256,7 @@ export default function SpendingChart({
 
   // Sort expense categories by total (descending for display legend)
   const sortedExpenseCategories = [...allExpenseCategories].sort(
-    (a, b) => categoryTotals[b] - categoryTotals[a]
+    (a, b) => categorySortingTotals[b] - categorySortingTotals[a]
   );
 
   // Transform data: each period has income and expense bars
@@ -206,7 +284,7 @@ export default function SpendingChart({
   // For rendering bars, we need the largest categories FIRST (they appear at bottom in stack)
   // Sort by total descending (largest first = bottom of stack in Recharts)
   const stackedExpenseCategories = [...expenseCategories].sort(
-    (a, b) => categoryTotals[b] - categoryTotals[a]
+    (a, b) => categorySortingTotals[b] - categorySortingTotals[a]
   );
 
   // Category colors - assign unique colors to each category
@@ -225,19 +303,121 @@ export default function SpendingChart({
       "Healthcare": "#10B981", // Emerald
       "Entertainment": "#F97316", // Orange
       "Utilities": "#6366F1", // Indigo
+      "Transfer Between My Accounts": "#64748B", // Gray (same as Other since it's typically excluded)
+      "Outgoing Transfer": "#94A3B8", // Light gray
+      "Incoming Transfer": "#34C759", // Green (same as income)
     };
     
     return colorMap[category] || "#94A3B8"; // Default gray
   };
 
+  // Calculate total expenses and income from chart data
+  const calculateTotals = () => {
+    if (!chartData || !chartData.data) {
+      return { totalExpenses: 0, totalIncome: 0 };
+    }
+
+    let totalExpenses = 0;
+    let totalIncome = 0;
+
+    chartData.data.forEach((item: any) => {
+      const category = item.category;
+      const amount = Number(item.total);
+
+      if (incomeCategories.includes(category)) {
+        totalIncome += amount;
+      } else if (!transferCategories.includes(category)) {
+        totalExpenses += amount;
+      }
+    });
+
+    return { totalExpenses, totalIncome };
+  };
+
+  const { totalExpenses, totalIncome } = calculateTotals();
+
+  // Custom tooltip that filters out zero values
+  const CustomTooltip = ({ active, payload, label }: any) => {
+    if (!active || !payload || !payload.length) return null;
+
+    // Filter out items with zero or undefined values
+    const nonZeroItems = payload.filter((item: any) => item.value && item.value !== 0);
+
+    if (nonZeroItems.length === 0) return null;
+
+    return (
+      <div
+        style={{
+          backgroundColor: "var(--color-bg-primary)",
+          border: "1px solid var(--color-border)",
+          borderRadius: "12px",
+          boxShadow: "var(--shadow-lg)",
+          padding: "12px",
+        }}
+      >
+        <p
+          style={{
+            color: "var(--color-text-primary)",
+            fontWeight: 600,
+            fontSize: "14px",
+            marginBottom: "8px",
+          }}
+        >
+          {label}
+        </p>
+        {nonZeroItems.map((item: any, index: number) => {
+          // Clean up the name by removing "expense_" or "income_" prefix
+          let displayName = item.name;
+          if (displayName.startsWith("expense_")) {
+            displayName = displayName.replace("expense_", "");
+          } else if (displayName.startsWith("income_")) {
+            displayName = displayName.replace("income_", "");
+          }
+
+          return (
+            <p
+              key={index}
+              style={{
+                color: "var(--color-text-secondary)",
+                fontSize: "13px",
+                padding: "4px 0",
+              }}
+            >
+              <span style={{ color: item.color }}>{displayName}</span> : {formatCurrency(item.value)}
+            </p>
+          );
+        })}
+      </div>
+    );
+  };
+
   return (
-    <div className="card p-6 space-y-6">
+    <div className="card p-6 space-y-6 relative">
+      {/* Subtle loading indicator for refreshes */}
+      {isRefreshing && (
+        <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-[var(--color-primary)] to-transparent animate-pulse" />
+      )}
+      
       {/* Chart Header with Segmented Control */}
       <div className="flex items-center justify-between">
         <div>
           <p className="text-caption text-[var(--color-text-secondary)]">
             Showing {chartData.periods.length} periods
           </p>
+          <div className="flex items-center gap-4 mt-2">
+            <div className="flex items-center gap-2">
+              <span className="text-caption text-[var(--color-text-secondary)]">Expenses:</span>
+              <span className="text-body font-semibold text-[var(--color-text-primary)]">
+                {formatCurrency(totalExpenses)}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-caption text-[var(--color-text-secondary)]">Income:</span>
+              <span className="text-body font-semibold text-[var(--color-success)]">
+                {formatCurrency(totalIncome)}
+              </span>
+            </div>
+          </div>
         </div>
         {onGroupByChange && (
           <SegmentedControl
@@ -252,17 +432,18 @@ export default function SpendingChart({
       </div>
 
       {/* Chart */}
-      <ResponsiveContainer width="100%" height={400}>
-        <BarChart
-          data={transformedData}
-          margin={{ top: 20, right: 30, left: 20, bottom: 20 }}
-          onClick={(data) => {
-            // Handle click on chart bar
-            if (data && data.activeLabel && onPeriodClick) {
-              onPeriodClick(data.activeLabel);
-            }
-          }}
-        >
+      <div className={`transition-opacity duration-300 min-h-[400px] ${isRefreshing ? 'opacity-60' : 'opacity-100'}`}>
+        <ResponsiveContainer width="100%" height={400}>
+          <BarChart
+            data={transformedData}
+            margin={{ top: 20, right: 30, left: 20, bottom: 20 }}
+            onClick={(data) => {
+              // Handle click on chart bar
+              if (data && data.activeLabel && onPeriodClick) {
+                onPeriodClick(data.activeLabel);
+              }
+            }}
+          >
           <defs>
             {/* Gradients for expense categories */}
             {stackedExpenseCategories.map((category: string) => {
@@ -297,27 +478,7 @@ export default function SpendingChart({
             tick={{ fontSize: 12, fill: "var(--color-text-secondary)" }}
             tickLine={{ stroke: "var(--color-border-light)" }}
           />
-          <Tooltip
-            formatter={(value: number | undefined) => value !== undefined ? formatCurrency(value) : ""}
-            contentStyle={{
-              backgroundColor: "var(--color-bg-primary)",
-              border: "1px solid var(--color-border)",
-              borderRadius: "12px",
-              boxShadow: "var(--shadow-lg)",
-              padding: "12px",
-            }}
-            labelStyle={{ 
-              color: "var(--color-text-primary)", 
-              fontWeight: 600,
-              fontSize: "14px",
-              marginBottom: "8px",
-            }}
-            itemStyle={{
-              color: "var(--color-text-secondary)",
-              fontSize: "13px",
-              padding: "4px 0",
-            }}
-          />
+          <Tooltip content={<CustomTooltip />} />
           <Legend
             wrapperStyle={{ paddingTop: "20px" }}
             iconType="circle"
@@ -337,8 +498,18 @@ export default function SpendingChart({
               stackId="expenses"
               fill={`url(#gradient-${category.replace(/\s+/g, '-')})`}
               name={category}
-              radius={idx === stackedExpenseCategories.length - 1 ? [8, 8, 0, 0] : undefined}
               cursor="pointer"
+              onMouseEnter={(data, index, e) => {
+                // Make hover effect subtle with dark theme
+                if (e && e.target) {
+                  (e.target as any).style.opacity = '0.8';
+                }
+              }}
+              onMouseLeave={(data, index, e) => {
+                if (e && e.target) {
+                  (e.target as any).style.opacity = '1';
+                }
+              }}
             />
           ))}
           
@@ -350,12 +521,22 @@ export default function SpendingChart({
               stackId="income"
               fill={`url(#gradient-${category.replace(/\s+/g, '-')})`}
               name={category}
-              radius={[8, 8, 0, 0]}
               cursor="pointer"
+              onMouseEnter={(data, index, e) => {
+                if (e && e.target) {
+                  (e.target as any).style.opacity = '0.8';
+                }
+              }}
+              onMouseLeave={(data, index, e) => {
+                if (e && e.target) {
+                  (e.target as any).style.opacity = '1';
+                }
+              }}
             />
           ))}
         </BarChart>
       </ResponsiveContainer>
+      </div>
 
       {/* Category Summary - Unified List */}
       <div className="pt-4 border-t border-[var(--color-border-light)]">
@@ -363,109 +544,110 @@ export default function SpendingChart({
           <h3 className="text-body font-semibold text-[var(--color-text-primary)]">
             All Categories
           </h3>
-            <div className="flex gap-2">
-              <button
-                onClick={() => {
-                  // Select all (exclude none)
-                  if (onCategoryToggle) {
-                    excludedCategories.forEach(cat => onCategoryToggle(cat));
-                  }
-                }}
-                disabled={excludedCategories.length === 0}
-                className="text-label text-[var(--color-primary)] hover:text-[var(--color-primary-hover)] disabled:opacity-40 disabled:cursor-not-allowed transition-apple"
-              >
-                Select All
-              </button>
-              <span className="text-[var(--color-text-tertiary)]">|</span>
-              <button
-                onClick={() => {
-                  // Deselect all (exclude all categories)
-                  if (onCategoryToggle) {
-                    legendCategories
-                      .filter((cat: string) => !excludedCategories.includes(cat))
-                      .forEach((cat: string) => onCategoryToggle(cat));
-                  }
-                }}
-                disabled={excludedCategories.length === legendCategories.length}
-                className="text-label text-[var(--color-primary)] hover:text-[var(--color-primary-hover)] disabled:opacity-40 disabled:cursor-not-allowed transition-apple"
-              >
-                Deselect All
-              </button>
-            </div>
+          <button
+            onClick={() => {
+              // Clear all filters
+              onClearFilters?.();
+            }}
+            disabled={filterMode === 'none'}
+            className="text-label text-[var(--color-primary)] hover:text-[var(--color-primary-hover)] disabled:opacity-40 disabled:cursor-not-allowed transition-apple"
+          >
+            Clear Selection
+          </button>
         </div>
         
         {/* Unified category list with 2 columns */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-2">
-          {/* First pass: calculate all totals and create unified list */}
+          {/* Show ALL available categories with totals from categoryTotals (without category filter) */}
           {(() => {
-            // Calculate totals for all categories
+            // Calculate totals for all categories using categoryTotals (not filtered by selected categories)
             const allCategoryTotals: Array<{category: string, total: number, isIncome: boolean}> = [];
             
-            // Add expense categories
-            sortedExpenseCategories.forEach((category: string) => {
-              allCategoryTotals.push({
-                category,
-                total: categoryTotals[category],
-                isIncome: false,
-              });
-            });
-            
-            // Add income categories
-            allIncomeCategories.forEach((category: string) => {
-              const total = chartData?.data
-                ? chartData.data
+            // Process all available categories from legendCategories
+            legendCategories.forEach((category: string) => {
+              const isIncome = incomeCategories.includes(category);
+              // Use categoryTotals instead of chartData to show unfiltered totals
+              const total = categoryTotals?.data
+                ? categoryTotals.data
                     .filter((d: any) => d.category === category)
                     .reduce((sum: number, d: any) => sum + Number(d.total), 0)
                 : 0;
-              if (total > 0) {
-                allCategoryTotals.push({
-                  category,
-                  total,
-                  isIncome: true,
-                });
-              }
+              
+              allCategoryTotals.push({
+                category,
+                total,
+                isIncome,
+              });
             });
             
-            // Sort by absolute total (largest first)
+            // Sort by total descending (don't prioritize selected categories in sorting)
             allCategoryTotals.sort((a, b) => b.total - a.total);
             
             // Render all categories
             return allCategoryTotals.map(({ category, total, isIncome }) => {
               const color = getCategoryColor(category, isIncome);
-              const isExcluded = excludedCategories.includes(category);
+              const isFiltered = filteredCategories.includes(category);
+              const isInWhitelist = filterMode === 'whitelist' && isFiltered;
+              const isInBlacklist = filterMode === 'blacklist' && isFiltered;
+              const isVisible = filterMode === 'none' || 
+                               (filterMode === 'whitelist' && isFiltered) || 
+                               (filterMode === 'blacklist' && !isFiltered);
               const sign = isIncome ? '+' : '-';
               
               return (
-                <button
+                <div
                   key={category}
-                  onClick={() => onCategoryToggle?.(category)}
                   className={`
                     w-full flex items-center justify-between p-3 rounded-lg
-                    transition-all duration-apple text-left
-                    ${isExcluded 
+                    transition-all duration-apple
+                    ${!isVisible 
                       ? 'opacity-40 hover:opacity-100' 
                       : ''
                     }
-                    hover:bg-white/5 active:bg-white/10
-                    ${onCategoryToggle ? 'cursor-pointer' : 'cursor-default'}
+                    hover:bg-white/5
+                    group
                   `}
-                  disabled={!onCategoryToggle}
                 >
-                  <div className="flex items-center gap-3 min-w-0 flex-1">
+                  <button
+                    onClick={() => onCategoryToggle?.(category)}
+                    className="flex items-center gap-3 min-w-0 flex-1 text-left"
+                    disabled={!onCategoryToggle}
+                  >
                     <div
                       className="w-3 h-3 rounded-full flex-shrink-0 ring-2 ring-offset-2 ring-offset-[var(--color-bg-primary)]"
-                      style={{ backgroundColor: color, ringColor: isExcluded ? 'transparent' : `${color}40` }}
+                      style={{ backgroundColor: color, ringColor: isVisible ? `${color}40` : 'transparent' }}
                     />
-                    <p className={`text-body ${isExcluded ? 'line-through' : ''} text-[var(--color-text-primary)] truncate`}>
+                    <p className="text-body text-[var(--color-text-primary)] truncate">
                       {category}
                     </p>
+                  </button>
+                  <div className="flex items-center gap-2">
+                    <p className={`text-body font-semibold tabular-nums ${
+                      isIncome ? 'text-[var(--color-success)]' : 'text-[var(--color-text-secondary)]'
+                    }`}>
+                      {sign} {formatCurrency(Math.abs(total))}
+                    </p>
+                    {/* X button for excluding/including categories - always visible */}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onCategoryExclude?.(category);
+                      }}
+                      className={`
+                        ml-2 p-1 rounded transition-all
+                        ${isInBlacklist 
+                          ? 'bg-gray-200 dark:bg-gray-700' 
+                          : 'hover:bg-gray-200 dark:hover:bg-gray-700'
+                        }
+                      `}
+                      title={isInBlacklist ? "Remove from blacklist" : "Exclude this category"}
+                    >
+                      <svg className={`w-4 h-4 ${isInBlacklist ? 'text-gray-600 dark:text-gray-400' : 'text-gray-500 dark:text-gray-300'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
                   </div>
-                  <p className={`text-body font-semibold ml-4 tabular-nums ${
-                    isIncome ? 'text-[var(--color-success)]' : 'text-[var(--color-text-secondary)]'
-                  }`}>
-                    {sign} {formatCurrency(Math.abs(total))}
-                  </p>
-                </button>
+                </div>
               );
             });
           })()}

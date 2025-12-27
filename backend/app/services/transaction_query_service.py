@@ -30,7 +30,7 @@ class TransactionQueryService:
         categories: Optional[List[str]] = None,
         accounts: Optional[List[str]] = None,
         merchant: Optional[str] = None,
-        exclude_transfers: bool = True
+        exclude_transfers: bool = False
     ):
         """
         Apply consistent base filters to any transaction query.
@@ -81,7 +81,7 @@ class TransactionQueryService:
         categories: Optional[List[str]] = None,
         accounts: Optional[List[str]] = None,
         merchant: Optional[str] = None,
-        exclude_transfers: bool = True,
+        exclude_transfers: bool = False,
         page: int = 1,
         page_size: int = 50
     ):
@@ -123,7 +123,7 @@ class TransactionQueryService:
         categories: Optional[List[str]] = None,
         accounts: Optional[List[str]] = None,
         merchant: Optional[str] = None,
-        exclude_transfers: bool = True
+        exclude_transfers: bool = False
     ):
         """
         Get weekly aggregated data with consistent filtering.
@@ -165,7 +165,7 @@ class TransactionQueryService:
         categories: Optional[List[str]] = None,
         accounts: Optional[List[str]] = None,
         merchant: Optional[str] = None,
-        exclude_transfers: bool = True
+        exclude_transfers: bool = False
     ):
         """
         Get monthly aggregated data with consistent filtering.

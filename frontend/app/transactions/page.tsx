@@ -42,11 +42,23 @@ export default function TransactionsPage() {
     return (searchParams.get('groupBy') as "week" | "month") || "week";
   });
   
-  // Categories that are excluded by default in the backend
-  const defaultExcludedCategories = ['Transfer Between My Accounts', 'Outgoing Transfer'];
-  const [excludedCategories, setExcludedCategories] = useState<string[]>(() => {
-    const excluded = searchParams.getAll('excludedCategory');
-    return excluded.length > 0 ? excluded : defaultExcludedCategories;
+  // Selected categories - empty by default (show all)
+  // Smart filter state: can be whitelist or blacklist mode
+  const [filterMode, setFilterMode] = useState<'none' | 'whitelist' | 'blacklist'>(() => {
+    const mode = searchParams.get('filterMode');
+    // Default to blacklist mode if no URL params
+    if (!mode && searchParams.toString() === '') {
+      return 'blacklist';
+    }
+    return (mode === 'whitelist' || mode === 'blacklist') ? mode : 'none';
+  });
+  const [filteredCategories, setFilteredCategories] = useState<string[]>(() => {
+    const urlCategories = searchParams.getAll('filteredCategory');
+    // Default to excluding "Transfer Between My Accounts" if no URL params
+    if (urlCategories.length === 0 && searchParams.toString() === '') {
+      return ['Transfer Between My Accounts'];
+    }
+    return urlCategories;
   });
   const [availableCategories, setAvailableCategories] = useState<string[]>([]);
   
@@ -59,12 +71,18 @@ export default function TransactionsPage() {
     if (filters.merchant) params.set('merchant', filters.merchant);
     filters.categories.forEach(cat => params.append('category', cat));
     filters.accounts.forEach(acc => params.append('account', acc));
-    excludedCategories.forEach(cat => params.append('excludedCategory', cat));
+    
+    // Add smart filter params
+    if (filterMode !== 'none') {
+      params.set('filterMode', filterMode);
+      filteredCategories.forEach(cat => params.append('filteredCategory', cat));
+    }
+    
     params.set('groupBy', groupBy);
     
     const newUrl = `${window.location.pathname}?${params.toString()}`;
     router.replace(newUrl, { scroll: false });
-  }, [filters, excludedCategories, groupBy, router]);
+  }, [filters, filterMode, filteredCategories, groupBy, router]);
   
   // Fetch available categories (including transfer categories)
   useEffect(() => {
@@ -95,15 +113,59 @@ export default function TransactionsPage() {
       accounts: [],
       merchant: ""
     });
-    setExcludedCategories([]);
+    setSelectedCategories([]);
   };
 
   const handleCategoryToggle = (category: string) => {
-    setExcludedCategories(prev => 
-      prev.includes(category)
-        ? prev.filter(c => c !== category)
-        : [...prev, category]
-    );
+    handleCategoryClick(category);
+  };
+
+  // Handle category name click (whitelist mode)
+  const handleCategoryClick = (category: string) => {
+    setFilteredCategories((prev) => {
+      if (filterMode === 'whitelist' && prev.includes(category)) {
+        // Remove from whitelist
+        const newList = prev.filter((c) => c !== category);
+        if (newList.length === 0) {
+          setFilterMode('none');
+        }
+        return newList;
+      } else if (filterMode === 'whitelist') {
+        // Add to existing whitelist
+        return [...prev, category];
+      } else {
+        // Switch to whitelist mode
+        setFilterMode('whitelist');
+        return [category];
+      }
+    });
+  };
+
+  // Handle X button click (blacklist mode)
+  const handleCategoryExclude = (category: string) => {
+    setFilteredCategories((prev) => {
+      if (filterMode === 'blacklist' && prev.includes(category)) {
+        // Remove from blacklist
+        const newList = prev.filter((c) => c !== category);
+        if (newList.length === 0) {
+          setFilterMode('none');
+        }
+        return newList;
+      } else if (filterMode === 'blacklist') {
+        // Add to existing blacklist
+        return [...prev, category];
+      } else {
+        // Switch to blacklist mode
+        setFilterMode('blacklist');
+        return [category];
+      }
+    });
+  };
+
+  // Clear all filters
+  const handleClearFilters = () => {
+    setFilterMode('none');
+    setFilteredCategories([]);
   };
   
   const handlePeriodClick = (period: string) => {
@@ -137,6 +199,117 @@ export default function TransactionsPage() {
     }
   };
 
+  const handleQuickFilter = (filterType: string) => {
+    const now = new Date();
+    let startYear: number, startMonth: number, startDay: number;
+    let endYear: number, endMonth: number, endDay: number;
+
+    switch (filterType) {
+      case 'this-month':
+        startYear = now.getFullYear();
+        startMonth = now.getMonth() + 1; // JavaScript months are 0-indexed
+        startDay = 1;
+        endYear = now.getFullYear();
+        endMonth = now.getMonth() + 1;
+        endDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate(); // Last day of current month
+        break;
+      
+      case 'last-month':
+        const lastMonth = now.getMonth() === 0 ? 11 : now.getMonth() - 1;
+        const lastMonthYear = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
+        startYear = lastMonthYear;
+        startMonth = lastMonth + 1;
+        startDay = 1;
+        endYear = lastMonthYear;
+        endMonth = lastMonth + 1;
+        endDay = new Date(lastMonthYear, lastMonth + 1, 0).getDate(); // Last day of last month
+        break;
+      
+      case 'two-months-ago':
+        const twoMonthsAgo = (now.getMonth() - 2 + 12) % 12;
+        const twoMonthsAgoYear = now.getMonth() < 2 ? now.getFullYear() - 1 : now.getFullYear();
+        startYear = twoMonthsAgoYear;
+        startMonth = twoMonthsAgo + 1;
+        startDay = 1;
+        endYear = twoMonthsAgoYear;
+        endMonth = twoMonthsAgo + 1;
+        endDay = new Date(twoMonthsAgoYear, twoMonthsAgo + 1, 0).getDate(); // Last day of that month
+        break;
+      
+      case 'last-3-months':
+        const threeMonthsAgo = (now.getMonth() - 3 + 12) % 12;
+        const threeMonthsAgoYear = now.getMonth() < 3 ? now.getFullYear() - 1 : now.getFullYear();
+        startYear = threeMonthsAgoYear;
+        startMonth = threeMonthsAgo + 1;
+        startDay = 1;
+        endYear = now.getFullYear();
+        endMonth = now.getMonth() + 1;
+        endDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate(); // Last day of current month
+        break;
+      
+      case 'this-year':
+        startYear = now.getFullYear();
+        startMonth = 1;
+        startDay = 1;
+        endYear = now.getFullYear();
+        endMonth = 12;
+        endDay = 31;
+        break;
+      
+      case 'last-7-days': {
+        const sevenDaysAgo = new Date(now);
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+        startYear = sevenDaysAgo.getFullYear();
+        startMonth = sevenDaysAgo.getMonth() + 1;
+        startDay = sevenDaysAgo.getDate();
+        endYear = now.getFullYear();
+        endMonth = now.getMonth() + 1;
+        endDay = now.getDate();
+        break;
+      }
+      
+      case 'last-30-days': {
+        const thirtyDaysAgo = new Date(now);
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+        startYear = thirtyDaysAgo.getFullYear();
+        startMonth = thirtyDaysAgo.getMonth() + 1;
+        startDay = thirtyDaysAgo.getDate();
+        endYear = now.getFullYear();
+        endMonth = now.getMonth() + 1;
+        endDay = now.getDate();
+        break;
+      }
+      
+      default:
+        return;
+    }
+
+    const newFilters = {
+      ...filters,
+      startDate: `${startYear}-${String(startMonth).padStart(2, '0')}-${String(startDay).padStart(2, '0')}`,
+      endDate: `${endYear}-${String(endMonth).padStart(2, '0')}-${String(endDay).padStart(2, '0')}`
+    };
+    setFilters(newFilters);
+    handleFilterChange(newFilters);
+  };
+
+  const getQuickFilterLabel = (filterType: string): string => {
+    const now = new Date();
+    const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'];
+    
+    switch (filterType) {
+      case 'this-month':
+        return monthNames[now.getMonth()];
+      case 'last-month':
+        return monthNames[(now.getMonth() - 1 + 12) % 12];
+      case 'two-months-ago':
+        return monthNames[(now.getMonth() - 2 + 12) % 12];
+      default:
+        return filterType;
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Page Title */}
@@ -160,6 +333,8 @@ export default function TransactionsPage() {
             title="Total Spending"
             value={stats.total_expenses}
             format="currency"
+            gradient
+            gradientType="expense"
             icon={
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
@@ -182,6 +357,8 @@ export default function TransactionsPage() {
             title="Net Balance"
             value={stats.net}
             format="currency"
+            gradient
+            gradientType={stats.net >= 0 ? "success" : "expense"}
             changeType={stats.net >= 0 ? "increase" : "decrease"}
             icon={
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -193,7 +370,59 @@ export default function TransactionsPage() {
       ) : null}
 
       {/* Date and Merchant Filters */}
-      <div className="card p-6">
+      <div className="card p-6 space-y-4">
+        {/* Quick Date Filters */}
+        <div>
+          <label className="block text-caption text-[var(--color-text-secondary)] mb-2">
+            Quick Filters
+          </label>
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => handleQuickFilter('this-month')}
+              className="px-3 py-1.5 text-caption rounded-lg bg-[var(--color-bg-tertiary)] text-[var(--color-text-primary)] hover:bg-[var(--color-primary)] hover:text-white transition-apple"
+            >
+              {getQuickFilterLabel('this-month')}
+            </button>
+            <button
+              onClick={() => handleQuickFilter('last-month')}
+              className="px-3 py-1.5 text-caption rounded-lg bg-[var(--color-bg-tertiary)] text-[var(--color-text-primary)] hover:bg-[var(--color-primary)] hover:text-white transition-apple"
+            >
+              {getQuickFilterLabel('last-month')}
+            </button>
+            <button
+              onClick={() => handleQuickFilter('two-months-ago')}
+              className="px-3 py-1.5 text-caption rounded-lg bg-[var(--color-bg-tertiary)] text-[var(--color-text-primary)] hover:bg-[var(--color-primary)] hover:text-white transition-apple"
+            >
+              {getQuickFilterLabel('two-months-ago')}
+            </button>
+            <span className="border-l border-[var(--color-border-light)] mx-1"></span>
+            <button
+              onClick={() => handleQuickFilter('last-7-days')}
+              className="px-3 py-1.5 text-caption rounded-lg bg-[var(--color-bg-tertiary)] text-[var(--color-text-primary)] hover:bg-[var(--color-primary)] hover:text-white transition-apple"
+            >
+              Last 7 Days
+            </button>
+            <button
+              onClick={() => handleQuickFilter('last-30-days')}
+              className="px-3 py-1.5 text-caption rounded-lg bg-[var(--color-bg-tertiary)] text-[var(--color-text-primary)] hover:bg-[var(--color-primary)] hover:text-white transition-apple"
+            >
+              Last 30 Days
+            </button>
+            <button
+              onClick={() => handleQuickFilter('last-3-months')}
+              className="px-3 py-1.5 text-caption rounded-lg bg-[var(--color-bg-tertiary)] text-[var(--color-text-primary)] hover:bg-[var(--color-primary)] hover:text-white transition-apple"
+            >
+              Last 3 Months
+            </button>
+            <button
+              onClick={() => handleQuickFilter('this-year')}
+              className="px-3 py-1.5 text-caption rounded-lg bg-[var(--color-bg-tertiary)] text-[var(--color-text-primary)] hover:bg-[var(--color-primary)] hover:text-white transition-apple"
+            >
+              This Year
+            </button>
+          </div>
+        </div>
+
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {/* Date Range */}
           <div>
@@ -278,10 +507,13 @@ export default function TransactionsPage() {
             groupBy: groupBy
           }}
           onGroupByChange={setGroupBy}
-          onCategoryToggle={handleCategoryToggle}
-          excludedCategories={excludedCategories}
+          onCategoryToggle={handleCategoryClick}
+          onCategoryExclude={handleCategoryExclude}
+          filterMode={filterMode}
+          filteredCategories={filteredCategories}
           allAvailableCategories={availableCategories}
           onPeriodClick={handlePeriodClick}
+          onClearFilters={handleClearFilters}
         />
       </div>
 
@@ -291,7 +523,8 @@ export default function TransactionsPage() {
         <h2 className="text-heading text-[var(--color-text-primary)] mb-4">Transaction Details</h2>
         <TransactionList 
           filters={filters}
-          excludedCategories={excludedCategories}
+          filterMode={filterMode}
+          filteredCategories={filteredCategories}
           availableCategories={availableCategories}
         />
       </div>

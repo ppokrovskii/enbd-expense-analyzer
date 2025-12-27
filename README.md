@@ -11,6 +11,7 @@ A modern web application for analyzing ENBD bank transaction exports with AI-pow
 - 💾 **Deduplication**: Automatic detection and prevention of duplicate transactions
 - 📈 **Reports**: Weekly and monthly expense breakdowns
 - 🎯 **Category Management**: Manage and update category rules
+- ⚡ **Auto Re-categorization**: When you create or update a rule, all existing transactions are automatically re-categorized
 
 ## Architecture
 

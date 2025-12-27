@@ -49,8 +49,6 @@ data/*.csv
 data/archive/
 
 # Config cache (LLM categories are user-specific)
-config/llm_categories.json
-config/llm_categories_*.json
 
 # Temporary Excel files
 ~$*.xlsx

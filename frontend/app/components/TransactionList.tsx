@@ -33,11 +33,17 @@ interface FilterValues {
 
 interface TransactionListProps {
   filters?: FilterValues;
-  excludedCategories?: string[];
+  filterMode?: 'none' | 'whitelist' | 'blacklist';
+  filteredCategories?: string[];
   availableCategories?: string[]; // All categories from chart
 }
 
-export default function TransactionList({ filters, excludedCategories = [], availableCategories = [] }: TransactionListProps) {
+export default function TransactionList({ 
+  filters, 
+  filterMode = 'none', 
+  filteredCategories = [], 
+  availableCategories = []
+}: TransactionListProps) {
   const [data, setData] = useState<TransactionListResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -52,10 +58,10 @@ export default function TransactionList({ filters, excludedCategories = [], avai
     return 20;
   });
 
-  // Reset to page 1 when filters or excluded categories change
+  // Reset to page 1 when filters or selected categories change
   useEffect(() => {
     setCurrentPage(1);
-  }, [filters, excludedCategories]);
+  }, [filters, filterMode, filteredCategories]);
 
   useEffect(() => {
     fetchTransactions(currentPage, filters || {
@@ -65,7 +71,7 @@ export default function TransactionList({ filters, excludedCategories = [], avai
       accounts: [],
       merchant: ""
     });
-  }, [currentPage, filters, excludedCategories, pageSize]);
+  }, [currentPage, filters, filterMode, filteredCategories, pageSize]);
   
   // Save page size to localStorage when it changes
   const handlePageSizeChange = (newSize: number) => {
@@ -74,6 +80,21 @@ export default function TransactionList({ filters, excludedCategories = [], avai
     if (typeof window !== 'undefined') {
       localStorage.setItem('transactionPageSize', newSize.toString());
     }
+  };
+
+  const handleAISuggest = (merchant: string) => {
+    // Store merchant in sessionStorage
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('ai_categorize_merchants', JSON.stringify([merchant]));
+      sessionStorage.setItem('ai_categorize_days', '90');
+      sessionStorage.setItem('ai_categorize_referrer', 'transactions');
+      
+      // Store current URL to return to the same page with filters
+      sessionStorage.setItem('ai_categorize_return_url', window.location.href);
+    }
+    
+    // Navigate to AI suggestions page in same tab
+    window.location.href = '/categories/ai-suggestions';
   };
 
   const fetchTransactions = async (page: number, appliedFilters: FilterValues) => {
@@ -89,19 +110,19 @@ export default function TransactionList({ filters, excludedCategories = [], avai
       if (appliedFilters.endDate) params.append("end_date", appliedFilters.endDate);
       if (appliedFilters.merchant) params.append("merchant", appliedFilters.merchant);
       
-      // Handle categories:
-      // If we have excluded categories from chart legend, convert to include filter
-      if (excludedCategories.length > 0 && availableCategories.length > 0) {
-        // Include only non-excluded categories
-        const includedCategories = availableCategories.filter(
-          cat => !excludedCategories.includes(cat)
-        );
+      // Smart filter: whitelist or blacklist mode
+      if (filterMode === 'whitelist' && filteredCategories.length > 0) {
+        // Whitelist mode: only show selected categories
+        filteredCategories.forEach((cat) => params.append("categories", cat));
+      } else if (filterMode === 'blacklist' && filteredCategories.length > 0 && availableCategories.length > 0) {
+        // Blacklist mode: show all except selected categories
+        const includedCategories = availableCategories.filter(cat => !filteredCategories.includes(cat));
         includedCategories.forEach(cat => params.append("categories", cat));
-      } 
-      // Otherwise use explicit filter from filter panel
-      else if (appliedFilters.categories && appliedFilters.categories.length > 0) {
+      } else if (appliedFilters.categories && appliedFilters.categories.length > 0) {
+        // Explicit filter from filter panel
         appliedFilters.categories.forEach(cat => params.append("categories", cat));
       }
+      // If filterMode is 'none' and no explicit filter, don't send categories filter at all (show everything)
       
       appliedFilters.accounts.forEach(acc => params.append("accounts", acc));
 
@@ -234,7 +255,7 @@ export default function TransactionList({ filters, excludedCategories = [], avai
   };
   
   // Show empty state if all transactions are filtered out
-  if (filteredTransactions.length === 0 && excludedCategories.length > 0) {
+  if (filteredTransactions.length === 0 && (filterMode === 'whitelist' || filterMode === 'blacklist')) {
     return (
       <div className="card">
         <EmptyState
@@ -277,26 +298,39 @@ export default function TransactionList({ filters, excludedCategories = [], avai
             </thead>
             <tbody className="bg-[var(--color-bg-primary)] divide-y divide-[var(--color-border)]">
               {filteredTransactions.map((transaction) => (
-                <tr key={transaction.id} className="hover:bg-[var(--color-bg-secondary)] transition-apple">
+                <tr 
+                  key={transaction.id} 
+                  className="group hover:bg-[var(--color-bg-secondary)] transition-apple"
+                >
                   <td className="px-6 py-4 whitespace-nowrap text-body text-[var(--color-text-primary)]">
                     {formatDate(transaction.date)}
                   </td>
                   <td className="px-6 py-4 text-body text-[var(--color-text-primary)]">
-                    <div className="max-w-xs">
-                      <p className="font-medium truncate" title={transaction.merchant}>
+                    <div className="max-w-md">
+                      <p className="font-medium break-words" title={transaction.merchant}>
                         {transaction.merchant}
                       </p>
-                      {transaction.description && (
-                        <p className="text-caption text-[var(--color-text-secondary)] truncate" title={transaction.description}>
-                          {transaction.description}
-                        </p>
-                      )}
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`px-2.5 py-1 inline-flex text-label font-medium rounded-full ${getCategoryColor(transaction.category)}`}>
-                      {transaction.category}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className={`px-2.5 py-1 inline-flex text-label font-medium rounded-full ${getCategoryColor(transaction.category)}`}>
+                        {transaction.category}
+                      </span>
+                      <button
+                        onClick={() => handleAISuggest(transaction.merchant)}
+                        className="px-2 py-1 text-xs text-white rounded-lg transition-all flex items-center justify-center gap-1 disabled:opacity-50 font-medium shadow-md hover:shadow-lg hover:scale-105 opacity-0 group-hover:opacity-100"
+                        style={{
+                          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%)',
+                        }}
+                        title="Get AI suggestion to categorize this merchant"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+                        </svg>
+                        AI
+                      </button>
+                    </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-body text-[var(--color-text-secondary)]">
                     {transaction.account}
@@ -339,20 +373,10 @@ export default function TransactionList({ filters, excludedCategories = [], avai
             <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between sm:gap-6">
               {/* Info section */}
               <div className="flex items-center gap-4">
-                <div className="space-y-1">
-                  <p className="text-body text-[var(--color-text-secondary)]">
-                    Showing <span className="font-medium text-[var(--color-text-primary)]">{filteredTransactions.length}</span> of{" "}
-                    <span className="font-medium text-[var(--color-text-primary)]">{data.total}</span> transactions
-                    {excludedCategories.length > 0 && (
-                      <span className="text-caption ml-2 text-[var(--color-text-tertiary)]">
-                        ({excludedCategories.length} {excludedCategories.length === 1 ? 'category' : 'categories'} excluded)
-                      </span>
-                    )}
-                  </p>
-                  <p className="text-caption text-[var(--color-text-secondary)]">
-                    Total: <span className="font-semibold text-[var(--color-text-primary)]">{formatCurrencyShort(filteredTotal)}</span>
-                  </p>
-                </div>
+                <p className="text-body text-[var(--color-text-secondary)]">
+                  Showing <span className="font-medium text-[var(--color-text-primary)]">{filteredTransactions.length}</span> of{" "}
+                  <span className="font-medium text-[var(--color-text-primary)]">{data.total}</span> transactions
+                </p>
                 
                 {/* Page size selector */}
                 <div className="flex items-center gap-2">
@@ -411,20 +435,10 @@ export default function TransactionList({ filters, excludedCategories = [], avai
         /* Summary when only 1 page */
         <div className="card px-4 py-3">
           <div className="flex items-center justify-between">
-            <div className="space-y-1">
-              <p className="text-body text-[var(--color-text-secondary)]">
-                Showing <span className="font-medium text-[var(--color-text-primary)]">{filteredTransactions.length}</span> 
-                {' '}{filteredTransactions.length === 1 ? 'transaction' : 'transactions'}
-                {excludedCategories.length > 0 && (
-                  <span className="text-caption ml-2 text-[var(--color-text-tertiary)]">
-                    ({excludedCategories.length} {excludedCategories.length === 1 ? 'category' : 'categories'} excluded)
-                  </span>
-                )}
-              </p>
-              <p className="text-caption text-[var(--color-text-secondary)]">
-                Total: <span className="font-semibold text-[var(--color-text-primary)]">{formatCurrencyShort(filteredTotal)}</span>
-              </p>
-            </div>
+            <p className="text-body text-[var(--color-text-secondary)]">
+              Showing <span className="font-medium text-[var(--color-text-primary)]">{filteredTransactions.length}</span> 
+              {' '}{filteredTransactions.length === 1 ? 'transaction' : 'transactions'}
+            </p>
             
             {/* Page size selector for single page too */}
             <div className="flex items-center gap-2">

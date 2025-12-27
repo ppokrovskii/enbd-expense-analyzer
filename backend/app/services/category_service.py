@@ -48,19 +48,34 @@ class CategoryService:
         # Check each category's keywords
         for category, keywords in rules.items():
             for keyword in keywords:
-                keyword_upper = keyword.upper()
-                if keyword_upper in merchant_upper:
-                    return category
+                # Handle keyword_or pattern (pipe-separated alternatives)
+                if '|' in keyword:
+                    # Split by pipe and check if any alternative matches
+                    alternatives = [alt.strip() for alt in keyword.split('|')]
+                    for alt in alternatives:
+                        if alt and alt.upper() in merchant_upper:
+                            return category
+                else:
+                    # Simple keyword match
+                    keyword_upper = keyword.upper()
+                    if keyword_upper in merchant_upper:
+                        return category
         
         return "Other"
     
-    def categorize_transactions(self, db: Session, transaction_ids: Optional[List[int]] = None) -> int:
+    def categorize_transactions(
+        self, 
+        db: Session, 
+        transaction_ids: Optional[List[int]] = None,
+        force_recategorize_all: bool = False
+    ) -> int:
         """
         Apply category rules to uncategorized transactions (or specified transactions).
         
         Args:
             db: Database session
             transaction_ids: Optional list of specific transaction IDs to categorize
+            force_recategorize_all: If True, recategorize ALL transactions, not just "Other"
         
         Returns:
             Number of transactions categorized
@@ -68,17 +83,18 @@ class CategoryService:
         # Load category rules
         rules = self.load_categories(db)
         
-        # Query uncategorized transactions (or specific ones)
+        # Query transactions
         query = db.query(Transaction)
         if transaction_ids:
             query = query.filter(Transaction.id.in_(transaction_ids))
-        else:
-            # Match NULL, empty string, or 'Other'
+        elif not force_recategorize_all:
+            # Match NULL, empty string, or 'Other' (default behavior)
             query = query.filter(
                 (Transaction.category.is_(None)) | 
                 (Transaction.category == '') | 
                 (Transaction.category == 'Other')
             )
+        # If force_recategorize_all=True, no filter - process ALL transactions
         
         transactions = query.all()
         
@@ -91,35 +107,3 @@ class CategoryService:
         
         db.commit()
         return categorized_count
-    
-    def seed_categories_from_json(self, db: Session, json_path: str) -> int:
-        """
-        Load categories from a JSON file and insert into database.
-        Useful for initializing from the existing categories.json file.
-        
-        Args:
-            db: Database session
-            json_path: Path to categories.json file
-        
-        Returns:
-            Number of categories inserted
-        """
-        with open(json_path, 'r') as f:
-            data = json.load(f)
-        
-        categories_data = data.get('categories', [])
-        inserted = 0
-        
-        for cat_data in categories_data:
-            # Check if category already exists
-            existing = db.query(Category).filter_by(name=cat_data['name']).first()
-            if not existing:
-                category = Category(
-                    name=cat_data['name'],
-                    keywords=cat_data.get('keywords', [])
-                )
-                db.add(category)
-                inserted += 1
-        
-        db.commit()
-        return inserted

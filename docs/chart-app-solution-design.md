@@ -73,10 +73,11 @@ class CategoryManager:
         
     def update_rules(self, category: str, add: List[str], remove: List[str]):
         # Update categories.json
-        # Re-run categorization pipeline
+        # Auto re-categorize ALL transactions when rules change
         
     def add_category(self, name: str, keywords: List[str]):
         # Add new category to categories.json
+        # Auto apply rules to existing transactions
         
     def delete_category(self, name: str):
         # Remove category, reassign transactions to "Other"
