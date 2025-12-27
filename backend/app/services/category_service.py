@@ -32,6 +32,7 @@ class CategoryService:
     def categorize_merchant(self, merchant: str, rules: Dict[str, List[str]]) -> str:
         """
         Categorize a single merchant based on rules.
+        Prioritizes longer/more-specific keywords over shorter ones.
         
         Args:
             merchant: Merchant name to categorize
@@ -45,21 +46,26 @@ class CategoryService:
         
         merchant_upper = merchant.upper()
         
-        # Check each category's keywords
+        # Build list of (category, keyword_length, keyword) tuples
+        # Sort by keyword length descending (longest/most specific first)
+        matches = []
         for category, keywords in rules.items():
             for keyword in keywords:
                 # Handle keyword_or pattern (pipe-separated alternatives)
                 if '|' in keyword:
-                    # Split by pipe and check if any alternative matches
                     alternatives = [alt.strip() for alt in keyword.split('|')]
                     for alt in alternatives:
                         if alt and alt.upper() in merchant_upper:
-                            return category
+                            matches.append((category, len(alt), alt))
                 else:
-                    # Simple keyword match
                     keyword_upper = keyword.upper()
                     if keyword_upper in merchant_upper:
-                        return category
+                        matches.append((category, len(keyword), keyword))
+        
+        # Return category with longest matching keyword (most specific)
+        if matches:
+            matches.sort(key=lambda x: x[1], reverse=True)
+            return matches[0][0]
         
         return "Other"
     
