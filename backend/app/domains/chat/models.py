@@ -13,6 +13,7 @@ class ChatSession(Base):
     
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
     user_id = Column(String(50), nullable=False)
+    person_id = Column(Integer, ForeignKey('persons.id', ondelete='CASCADE'), nullable=True, index=True)
     title = Column(String(255), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
@@ -22,7 +23,7 @@ class ChatSession(Base):
     )
     
     def __repr__(self):
-        return f"<ChatSession(id={self.id}, user_id={self.user_id}, title={self.title})>"
+        return f"<ChatSession(id={self.id}, user_id={self.user_id}, person_id={self.person_id}, title={self.title})>"
 
 
 class ChatMessage(Base):
@@ -32,6 +33,7 @@ class ChatMessage(Base):
     
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
     session_id = Column(UUID(as_uuid=True), ForeignKey('chat_sessions.id', ondelete='CASCADE'), nullable=False)
+    person_id = Column(Integer, ForeignKey('persons.id', ondelete='CASCADE'), nullable=True, index=True)
     role = Column(String(20), nullable=False)  # 'user' | 'assistant' | 'system'
     content = Column(Text, nullable=False)
     tool_calls = Column(JSON, nullable=True)  # Store function calls if any
@@ -52,6 +54,7 @@ class ChatContext(Base):
     
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
     session_id = Column(UUID(as_uuid=True), ForeignKey('chat_sessions.id', ondelete='CASCADE'), nullable=False)
+    person_id = Column(Integer, ForeignKey('persons.id', ondelete='CASCADE'), nullable=True, index=True)
     transaction_filters = Column(JSON, nullable=True)  # date_range, categories, accounts
     transaction_count = Column(Integer, nullable=True)
     transaction_summary = Column(JSON, nullable=True)  # Aggregated stats
@@ -75,6 +78,7 @@ class TokenUsage(Base):
     
     id = Column(Integer, primary_key=True, autoincrement=True, index=True)
     user_id = Column(String(50), nullable=False)
+    person_id = Column(Integer, ForeignKey('persons.id', ondelete='CASCADE'), nullable=True, index=True)
     session_id = Column(UUID(as_uuid=True), ForeignKey('chat_sessions.id', ondelete='SET NULL'), nullable=True)
     prompt_tokens = Column(Integer, nullable=False)
     completion_tokens = Column(Integer, nullable=False)

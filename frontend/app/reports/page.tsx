@@ -2,188 +2,246 @@
 
 import { useState, useEffect } from "react";
 import { getApiHeaders } from "../utils/api";
+import MetricCard from "../components/ui/MetricCard";
+import SpendingChart from "../components/SpendingChart";
+import SkeletonLoader from "../components/ui/SkeletonLoader";
 
-interface Report {
-  id: string;
-  title: string;
-  report_type: string;
-  report_format: string;
-  status: string;
-  period_start: string;
-  period_end: string;
-  file_size: number | null;
-  created_at: string;
-  completed_at: string | null;
+interface FilterValues {
+  startDate: string;
+  endDate: string;
 }
 
-interface ReportType {
-  value: string;
-  label: string;
+interface ReportStats {
+  total_income: number;
+  total_expenses: number;
+  net: number;
+  transaction_count: number;
 }
 
-interface ReportFormat {
-  value: string;
-  label: string;
+interface CategoryBreakdown {
+  category: string;
+  total: number;
+  percentage: number;
+  transaction_count: number;
+}
+
+interface TopTransaction {
+  description: string;
+  amount: number;
+  date: string;
+}
+
+interface CategoryDetail {
+  category: string;
+  total: number;
+  count: number;
+  top_transactions: TopTransaction[];
 }
 
 export default function ReportsPage() {
-  const [reports, setReports] = useState<Report[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [generating, setGenerating] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
-  
-  // Form state
-  const [reportType, setReportType] = useState("monthly_summary");
-  const [reportFormat, setReportFormat] = useState("pdf");
-  const [periodStart, setPeriodStart] = useState("");
-  const [periodEnd, setPeriodEnd] = useState("");
-  const [customTitle, setCustomTitle] = useState("");
-  
-  // Available options
-  const [reportTypes, setReportTypes] = useState<ReportType[]>([]);
-  const [reportFormats, setReportFormats] = useState<ReportFormat[]>([]);
-
-  // Listen for person changes
-  useEffect(() => {
-    const handlePersonChange = () => {
-      fetchReports();
-    };
-    
-    window.addEventListener('personChanged', handlePersonChange);
-    return () => window.removeEventListener('personChanged', handlePersonChange);
-  }, []);
-
-  useEffect(() => {
-    fetchReports();
-    fetchAvailableTypes();
-    setDefaultDates();
-  }, []);
-
-  const setDefaultDates = () => {
+  const [filters, setFilters] = useState<FilterValues>(() => {
+    // Default to current month
     const today = new Date();
     const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
     const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0);
     
-    setPeriodStart(firstDay.toISOString().split('T')[0]);
-    setPeriodEnd(lastDay.toISOString().split('T')[0]);
-  };
+    return {
+      startDate: firstDay.toISOString().split('T')[0],
+      endDate: lastDay.toISOString().split('T')[0]
+    };
+  });
 
-  const fetchReports = async () => {
+  const [stats, setStats] = useState<ReportStats | null>(null);
+  const [categoryBreakdown, setCategoryBreakdown] = useState<CategoryBreakdown[]>([]);
+  const [categoryDetails, setCategoryDetails] = useState<CategoryDetail[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Listen for person changes
+  useEffect(() => {
+    const handlePersonChange = () => {
+      fetchReportData();
+    };
+    
+    window.addEventListener('personChanged', handlePersonChange);
+    return () => window.removeEventListener('personChanged', handlePersonChange);
+  }, [filters]);
+
+  useEffect(() => {
+    fetchReportData();
+  }, [filters]);
+
+  const fetchReportData = async () => {
+    if (!filters.startDate || !filters.endDate) return;
+    
+    setLoading(true);
+    setError(null);
+
     try {
-      setLoading(true);
-      const response = await fetch('http://localhost:8000/api/reports/', {
-        headers: getApiHeaders(),
-      });
-      
-      if (!response.ok) throw new Error('Failed to fetch reports');
-      
-      const data = await response.json();
-      setReports(data.reports || []);
+      // Fetch summary stats
+      const statsParams = new URLSearchParams();
+      if (filters.startDate) statsParams.set('start_date', filters.startDate);
+      if (filters.endDate) statsParams.set('end_date', filters.endDate);
+
+      const statsResponse = await fetch(
+        `http://localhost:8000/api/data/stats?${statsParams.toString()}`,
+        { headers: getApiHeaders() }
+      );
+
+      if (!statsResponse.ok) throw new Error('Failed to fetch stats');
+      const statsData = await statsResponse.json();
+      setStats(statsData);
+
+      // Fetch category breakdown (top categories)
+      const breakdownResponse = await fetch(
+        `http://localhost:8000/api/data/category-breakdown?${statsParams.toString()}`,
+        { headers: getApiHeaders() }
+      );
+
+      if (!breakdownResponse.ok) throw new Error('Failed to fetch breakdown');
+      const breakdownData = await breakdownResponse.json();
+      setCategoryBreakdown(breakdownData.slice(0, 7)); // Top 7 categories
+
+      // Fetch detailed category data
+      const detailsResponse = await fetch(
+        `http://localhost:8000/api/data/category-details?${statsParams.toString()}`,
+        { headers: getApiHeaders() }
+      );
+
+      if (!detailsResponse.ok) throw new Error('Failed to fetch details');
+      const detailsData = await detailsResponse.json();
+      setCategoryDetails(detailsData);
+
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load reports');
+      setError(err instanceof Error ? err.message : 'Failed to load report data');
     } finally {
       setLoading(false);
     }
   };
 
-  const fetchAvailableTypes = async () => {
-    try {
-      const response = await fetch('http://localhost:8000/api/reports/types/available', {
-        headers: getApiHeaders(),
-      });
+  const handleQuickFilter = (filterType: string) => {
+    const now = new Date();
+    let startYear: number, startMonth: number, startDay: number;
+    let endYear: number, endMonth: number, endDay: number;
+
+    switch (filterType) {
+      case 'this-month':
+        startYear = now.getFullYear();
+        startMonth = now.getMonth() + 1;
+        startDay = 1;
+        endYear = now.getFullYear();
+        endMonth = now.getMonth() + 1;
+        endDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+        break;
       
-      if (!response.ok) throw new Error('Failed to fetch report types');
+      case 'last-month':
+        const lastMonth = now.getMonth() === 0 ? 11 : now.getMonth() - 1;
+        const lastMonthYear = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
+        startYear = lastMonthYear;
+        startMonth = lastMonth + 1;
+        startDay = 1;
+        endYear = lastMonthYear;
+        endMonth = lastMonth + 1;
+        endDay = new Date(lastMonthYear, lastMonth + 1, 0).getDate();
+        break;
       
-      const data = await response.json();
-      setReportTypes(data.report_types || []);
-      setReportFormats(data.report_formats || []);
-    } catch (err) {
-      console.error('Failed to fetch report types:', err);
-    }
-  };
-
-  const generateReport = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-    setSuccess(null);
-    setGenerating(true);
-
-    try {
-      const response = await fetch('http://localhost:8000/api/reports/generate', {
-        method: 'POST',
-        headers: getApiHeaders(),
-        body: JSON.stringify({
-          report_type: reportType,
-          report_format: reportFormat,
-          period_start: periodStart,
-          period_end: periodEnd,
-          title: customTitle || undefined,
-        }),
-      });
-
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.detail || 'Failed to generate report');
+      case 'two-months-ago':
+        const twoMonthsAgo = (now.getMonth() - 2 + 12) % 12;
+        const twoMonthsAgoYear = now.getMonth() < 2 ? now.getFullYear() - 1 : now.getFullYear();
+        startYear = twoMonthsAgoYear;
+        startMonth = twoMonthsAgo + 1;
+        startDay = 1;
+        endYear = twoMonthsAgoYear;
+        endMonth = twoMonthsAgo + 1;
+        endDay = new Date(twoMonthsAgoYear, twoMonthsAgo + 1, 0).getDate();
+        break;
+      
+      case 'last-3-months':
+        const threeMonthsAgo = (now.getMonth() - 3 + 12) % 12;
+        const threeMonthsAgoYear = now.getMonth() < 3 ? now.getFullYear() - 1 : now.getFullYear();
+        startYear = threeMonthsAgoYear;
+        startMonth = threeMonthsAgo + 1;
+        startDay = 1;
+        endYear = now.getFullYear();
+        endMonth = now.getMonth() + 1;
+        endDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+        break;
+      
+      case 'this-year':
+        startYear = now.getFullYear();
+        startMonth = 1;
+        startDay = 1;
+        endYear = now.getFullYear();
+        endMonth = 12;
+        endDay = 31;
+        break;
+      
+      case 'last-year':
+        startYear = now.getFullYear() - 1;
+        startMonth = 1;
+        startDay = 1;
+        endYear = now.getFullYear() - 1;
+        endMonth = 12;
+        endDay = 31;
+        break;
+      
+      case 'last-7-days': {
+        const sevenDaysAgo = new Date(now);
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+        startYear = sevenDaysAgo.getFullYear();
+        startMonth = sevenDaysAgo.getMonth() + 1;
+        startDay = sevenDaysAgo.getDate();
+        endYear = now.getFullYear();
+        endMonth = now.getMonth() + 1;
+        endDay = now.getDate();
+        break;
       }
+      
+      case 'last-30-days': {
+        const thirtyDaysAgo = new Date(now);
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+        startYear = thirtyDaysAgo.getFullYear();
+        startMonth = thirtyDaysAgo.getMonth() + 1;
+        startDay = thirtyDaysAgo.getDate();
+        endYear = now.getFullYear();
+        endMonth = now.getMonth() + 1;
+        endDay = now.getDate();
+        break;
+      }
+      
+      default:
+        return;
+    }
 
-      const report = await response.json();
-      setSuccess(`Report "${report.title}" generated successfully!`);
-      fetchReports();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to generate report');
-    } finally {
-      setGenerating(false);
+    setFilters({
+      startDate: `${startYear}-${String(startMonth).padStart(2, '0')}-${String(startDay).padStart(2, '0')}`,
+      endDate: `${endYear}-${String(endMonth).padStart(2, '0')}-${String(endDay).padStart(2, '0')}`
+    });
+  };
+
+  const getQuickFilterLabel = (filterType: string): string => {
+    const now = new Date();
+    const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'];
+    
+    switch (filterType) {
+      case 'this-month':
+        return monthNames[now.getMonth()];
+      case 'last-month':
+        return monthNames[(now.getMonth() - 1 + 12) % 12];
+      case 'two-months-ago':
+        return monthNames[(now.getMonth() - 2 + 12) % 12];
+      default:
+        return filterType;
     }
   };
 
-  const downloadReport = async (reportId: string, title: string) => {
-    try {
-      const response = await fetch(`http://localhost:8000/api/reports/${reportId}/download`, {
-        headers: getApiHeaders(),
-      });
-
-      if (!response.ok) throw new Error('Failed to download report');
-
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${title.replace(/\s+/g, '_')}.${getExtension(response.headers.get('content-type'))}`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to download report');
-    }
-  };
-
-  const deleteReport = async (reportId: string) => {
-    if (!confirm('Are you sure you want to delete this report?')) return;
-
-    try {
-      const response = await fetch(`http://localhost:8000/api/reports/${reportId}`, {
-        method: 'DELETE',
-        headers: getApiHeaders(),
-      });
-
-      if (!response.ok) throw new Error('Failed to delete report');
-
-      setSuccess('Report deleted successfully');
-      fetchReports();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete report');
-    }
-  };
-
-  const getExtension = (contentType: string | null): string => {
-    if (!contentType) return 'pdf';
-    if (contentType.includes('pdf')) return 'pdf';
-    if (contentType.includes('spreadsheet') || contentType.includes('excel')) return 'xlsx';
-    if (contentType.includes('json')) return 'json';
-    if (contentType.includes('csv')) return 'csv';
-    return 'pdf';
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'AED',
+      minimumFractionDigits: 2,
+    }).format(Math.abs(amount));
   };
 
   const formatDate = (dateString: string) => {
@@ -194,331 +252,420 @@ export default function ReportsPage() {
     });
   };
 
-  const formatFileSize = (bytes: number | null) => {
-    if (!bytes) return '-';
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  };
+  const exportPDF = async () => {
+    try {
+      const response = await fetch('http://localhost:8000/api/reports/generate', {
+        method: 'POST',
+        headers: getApiHeaders(),
+        body: JSON.stringify({
+          report_type: 'monthly_summary',
+          report_format: 'pdf',
+          period_start: filters.startDate,
+          period_end: filters.endDate,
+        }),
+      });
 
-  const getStatusBadge = (status: string) => {
-    const statusStyles: Record<string, string> = {
-      completed: 'bg-green-500/20 text-green-400 border-green-500/30',
-      generating: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
-      failed: 'bg-red-500/20 text-red-400 border-red-500/30',
-    };
-    
-    return (
-      <span className={`px-2 py-0.5 text-xs rounded-full border ${statusStyles[status] || 'bg-gray-500/20 text-gray-400'}`}>
-        {status}
-      </span>
-    );
-  };
+      if (!response.ok) throw new Error('Failed to generate PDF');
 
-  const getFormatIcon = (format: string) => {
-    switch (format.toLowerCase()) {
-      case 'pdf':
-        return (
-          <svg className="w-5 h-5 text-red-400" fill="currentColor" viewBox="0 0 20 20">
-            <path d="M4 18h12V6h-4V2H4v16zm8-16l4 4h-4V2zM2 0h12l4 4v16H2V0z"/>
-          </svg>
-        );
-      case 'excel':
-        return (
-          <svg className="w-5 h-5 text-green-400" fill="currentColor" viewBox="0 0 20 20">
-            <path d="M4 18h12V6h-4V2H4v16zm8-16l4 4h-4V2zM2 0h12l4 4v16H2V0z"/>
-          </svg>
-        );
-      default:
-        return (
-          <svg className="w-5 h-5 text-blue-400" fill="currentColor" viewBox="0 0 20 20">
-            <path d="M4 18h12V6h-4V2H4v16zm8-16l4 4h-4V2zM2 0h12l4 4v16H2V0z"/>
-          </svg>
-        );
+      const report = await response.json();
+      
+      // Download the generated report
+      const downloadResponse = await fetch(
+        `http://localhost:8000/api/reports/${report.id}/download`,
+        { headers: getApiHeaders() }
+      );
+
+      if (!downloadResponse.ok) throw new Error('Failed to download PDF');
+
+      const blob = await downloadResponse.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${report.title}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to export PDF');
     }
   };
 
-  // Quick generate buttons
-  const generateMonthlyReport = async (monthsAgo: number = 0) => {
-    const today = new Date();
-    const targetDate = new Date(today.getFullYear(), today.getMonth() - monthsAgo, 1);
-    const month = targetDate.getMonth() + 1;
-    const year = targetDate.getFullYear();
-
-    setGenerating(true);
-    setError(null);
-    setSuccess(null);
-
+  const exportExcel = async () => {
     try {
-      const response = await fetch(
-        `http://localhost:8000/api/reports/generate/monthly?month=${month}&year=${year}&report_format=pdf`,
-        {
-          method: 'POST',
-          headers: getApiHeaders(),
-        }
-      );
+      const response = await fetch('http://localhost:8000/api/reports/generate', {
+        method: 'POST',
+        headers: getApiHeaders(),
+        body: JSON.stringify({
+          report_type: 'monthly_summary',
+          report_format: 'excel',
+          period_start: filters.startDate,
+          period_end: filters.endDate,
+        }),
+      });
 
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.detail || 'Failed to generate report');
-      }
+      if (!response.ok) throw new Error('Failed to generate Excel');
 
       const report = await response.json();
-      setSuccess(`Report "${report.title}" generated successfully!`);
-      fetchReports();
+      
+      // Download the generated report
+      const downloadResponse = await fetch(
+        `http://localhost:8000/api/reports/${report.id}/download`,
+        { headers: getApiHeaders() }
+      );
+
+      if (!downloadResponse.ok) throw new Error('Failed to download Excel');
+
+      const blob = await downloadResponse.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${report.title}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to generate report');
-    } finally {
-      setGenerating(false);
+      setError(err instanceof Error ? err.message : 'Failed to export Excel');
     }
   };
 
   return (
-    <div className="min-h-screen bg-[var(--color-bg-primary)] p-6">
-      <div className="max-w-6xl mx-auto">
-        {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-[var(--color-text-primary)] mb-2">
-            Financial Reports
-          </h1>
-          <p className="text-[var(--color-text-secondary)]">
-            Generate PDF or Excel reports for your transactions
-          </p>
+    <div className="space-y-6">
+      {/* Page Title */}
+      <div>
+        <h1 className="text-title text-[var(--color-text-primary)]">Financial Reports</h1>
+        <p className="text-body text-[var(--color-text-secondary)] mt-1">
+          Generate comprehensive reports for your financial analysis
+        </p>
+      </div>
+
+      {/* Error Alert */}
+      {error && (
+        <div className="card p-4 bg-red-50 border border-red-200">
+          <p className="text-body text-red-800">{error}</p>
+        </div>
+      )}
+
+      {/* Date Filters */}
+      <div className="card p-6 space-y-4">
+        {/* Quick Date Filters */}
+        <div>
+          <label className="block text-caption text-[var(--color-text-secondary)] mb-2">
+            Quick Filters
+          </label>
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => handleQuickFilter('this-month')}
+              className="px-3 py-1.5 text-caption rounded-lg bg-[var(--color-bg-tertiary)] text-[var(--color-text-primary)] hover:bg-[var(--color-primary)] hover:text-white transition-apple"
+            >
+              {getQuickFilterLabel('this-month')}
+            </button>
+            <button
+              onClick={() => handleQuickFilter('last-month')}
+              className="px-3 py-1.5 text-caption rounded-lg bg-[var(--color-bg-tertiary)] text-[var(--color-text-primary)] hover:bg-[var(--color-primary)] hover:text-white transition-apple"
+            >
+              {getQuickFilterLabel('last-month')}
+            </button>
+            <button
+              onClick={() => handleQuickFilter('two-months-ago')}
+              className="px-3 py-1.5 text-caption rounded-lg bg-[var(--color-bg-tertiary)] text-[var(--color-text-primary)] hover:bg-[var(--color-primary)] hover:text-white transition-apple"
+            >
+              {getQuickFilterLabel('two-months-ago')}
+            </button>
+            <span className="border-l border-[var(--color-border-light)] mx-1"></span>
+            <button
+              onClick={() => handleQuickFilter('last-7-days')}
+              className="px-3 py-1.5 text-caption rounded-lg bg-[var(--color-bg-tertiary)] text-[var(--color-text-primary)] hover:bg-[var(--color-primary)] hover:text-white transition-apple"
+            >
+              Last 7 Days
+            </button>
+            <button
+              onClick={() => handleQuickFilter('last-30-days')}
+              className="px-3 py-1.5 text-caption rounded-lg bg-[var(--color-bg-tertiary)] text-[var(--color-text-primary)] hover:bg-[var(--color-primary)] hover:text-white transition-apple"
+            >
+              Last 30 Days
+            </button>
+            <button
+              onClick={() => handleQuickFilter('last-3-months')}
+              className="px-3 py-1.5 text-caption rounded-lg bg-[var(--color-bg-tertiary)] text-[var(--color-text-primary)] hover:bg-[var(--color-primary)] hover:text-white transition-apple"
+            >
+              Last 3 Months
+            </button>
+            <button
+              onClick={() => handleQuickFilter('this-year')}
+              className="px-3 py-1.5 text-caption rounded-lg bg-[var(--color-bg-tertiary)] text-[var(--color-text-primary)] hover:bg-[var(--color-primary)] hover:text-white transition-apple"
+            >
+              This Year
+            </button>
+            <button
+              onClick={() => handleQuickFilter('last-year')}
+              className="px-3 py-1.5 text-caption rounded-lg bg-[var(--color-bg-tertiary)] text-[var(--color-text-primary)] hover:bg-[var(--color-primary)] hover:text-white transition-apple"
+            >
+              Last Year
+            </button>
+          </div>
         </div>
 
-        {/* Alerts */}
-        {error && (
-          <div className="mb-6 p-4 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400">
-            {error}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Date Range */}
+          <div>
+            <label className="block text-caption text-[var(--color-text-secondary)] mb-2">
+              From Date
+            </label>
+            <input
+              type="date"
+              value={filters.startDate}
+              onChange={(e) => setFilters({ ...filters, startDate: e.target.value })}
+              className="input"
+            />
           </div>
-        )}
-        {success && (
-          <div className="mb-6 p-4 rounded-xl bg-green-500/10 border border-green-500/30 text-green-400">
-            {success}
+          <div>
+            <label className="block text-caption text-[var(--color-text-secondary)] mb-2">
+              To Date
+            </label>
+            <input
+              type="date"
+              value={filters.endDate}
+              onChange={(e) => setFilters({ ...filters, endDate: e.target.value })}
+              className="input"
+            />
           </div>
-        )}
+        </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Generate Report Form */}
-          <div className="lg:col-span-1">
-            <div className="bg-[var(--color-bg-secondary)] rounded-2xl border border-white/5 p-6">
-              <h2 className="text-lg font-semibold text-[var(--color-text-primary)] mb-4">
-                Generate New Report
-              </h2>
+        {/* Export Buttons */}
+        <div className="flex items-center gap-3 pt-4 border-t border-[var(--color-border-light)]">
+          <button
+            onClick={exportPDF}
+            disabled={loading}
+            className="btn-primary flex items-center gap-2"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+            </svg>
+            Export PDF
+          </button>
+          <button
+            onClick={exportExcel}
+            disabled={loading}
+            className="btn-secondary flex items-center gap-2"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+            </svg>
+            Export Excel
+          </button>
+        </div>
+      </div>
 
-              {/* Quick Actions */}
-              <div className="mb-6 space-y-2">
-                <p className="text-sm text-[var(--color-text-secondary)] mb-2">Quick Generate:</p>
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    onClick={() => generateMonthlyReport(0)}
-                    disabled={generating}
-                    className="px-3 py-1.5 text-sm rounded-lg bg-[var(--color-primary)]/10 text-[var(--color-primary)] hover:bg-[var(--color-primary)]/20 transition-apple disabled:opacity-50"
-                  >
-                    This Month
-                  </button>
-                  <button
-                    onClick={() => generateMonthlyReport(1)}
-                    disabled={generating}
-                    className="px-3 py-1.5 text-sm rounded-lg bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)]/80 transition-apple disabled:opacity-50"
-                  >
-                    Last Month
-                  </button>
-                </div>
-              </div>
+      {/* Report Preview - Section 1: Summary */}
+      <div>
+        <h2 className="text-heading text-[var(--color-text-primary)] mb-4">Report Preview</h2>
+        
+        {/* Summary Totals */}
+        {loading ? (
+          <SkeletonLoader variant="metric" />
+        ) : stats ? (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+            <MetricCard
+              title="Total Spending"
+              value={stats.total_expenses}
+              format="currency"
+              gradient
+              gradientType="expense"
+              icon={
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+                </svg>
+              }
+            />
+            <MetricCard
+              title="Total Income"
+              value={stats.total_income}
+              format="currency"
+              gradient
+              gradientType="income"
+              icon={
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              }
+            />
+            <MetricCard
+              title="Net Balance"
+              value={stats.net}
+              format="currency"
+              gradient
+              gradientType={stats.net >= 0 ? "success" : "expense"}
+              changeType={stats.net >= 0 ? "increase" : "decrease"}
+              icon={
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                </svg>
+              }
+            />
+          </div>
+        ) : null}
+      </div>
 
-              <div className="border-t border-white/5 pt-4">
-                <p className="text-sm text-[var(--color-text-secondary)] mb-4">Or customize:</p>
-                
-                <form onSubmit={generateReport} className="space-y-4">
-                  {/* Report Type */}
-                  <div>
-                    <label className="block text-sm text-[var(--color-text-secondary)] mb-1">
-                      Report Type
-                    </label>
-                    <select
-                      value={reportType}
-                      onChange={(e) => setReportType(e.target.value)}
-                      className="w-full px-3 py-2 rounded-lg bg-[var(--color-bg-tertiary)] border border-white/5 text-[var(--color-text-primary)] focus:outline-none focus:border-[var(--color-primary)]/50"
-                    >
-                      {reportTypes.map((type) => (
-                        <option key={type.value} value={type.value}>
-                          {type.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+      {/* Section 2: Expense Overview Chart */}
+      <div>
+        <h2 className="text-heading text-[var(--color-text-primary)] mb-4">Expense Overview</h2>
+        <SpendingChart
+          filters={{
+            startDate: filters.startDate,
+            endDate: filters.endDate,
+            categories: [],
+            accounts: [],
+            merchant: '',
+            groupBy: 'month'
+          }}
+          onGroupByChange={() => {}}
+        />
+      </div>
 
-                  {/* Format */}
-                  <div>
-                    <label className="block text-sm text-[var(--color-text-secondary)] mb-1">
-                      Format
-                    </label>
-                    <div className="flex gap-2">
-                      {reportFormats.map((format) => (
-                        <button
-                          key={format.value}
-                          type="button"
-                          onClick={() => setReportFormat(format.value)}
-                          className={`flex-1 px-3 py-2 rounded-lg border transition-apple ${
-                            reportFormat === format.value
-                              ? 'bg-[var(--color-primary)]/10 border-[var(--color-primary)]/50 text-[var(--color-primary)]'
-                              : 'bg-[var(--color-bg-tertiary)] border-white/5 text-[var(--color-text-secondary)] hover:border-white/10'
-                          }`}
-                        >
-                          {format.label}
-                        </button>
-                      ))}
+      {/* Section 3: Top Categories */}
+      {!loading && categoryBreakdown.length > 0 && (
+        <div>
+          <h2 className="text-heading text-[var(--color-text-primary)] mb-4">Top Spending Categories</h2>
+          <div className="card p-6">
+            <div className="space-y-4">
+              {categoryBreakdown.map((cat, index) => (
+                <div key={index} className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-body font-medium text-[var(--color-text-primary)]">
+                      {cat.category || 'Uncategorized'}
+                    </span>
+                    <div className="flex items-center gap-3">
+                      <span className="text-caption text-[var(--color-text-secondary)]">
+                        {cat.percentage.toFixed(1)}%
+                      </span>
+                      <span className="text-body font-semibold text-[var(--color-text-primary)]">
+                        {formatCurrency(cat.total)}
+                      </span>
                     </div>
                   </div>
-
-                  {/* Date Range */}
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-sm text-[var(--color-text-secondary)] mb-1">
-                        From
-                      </label>
-                      <input
-                        type="date"
-                        value={periodStart}
-                        onChange={(e) => setPeriodStart(e.target.value)}
-                        className="w-full px-3 py-2 rounded-lg bg-[var(--color-bg-tertiary)] border border-white/5 text-[var(--color-text-primary)] focus:outline-none focus:border-[var(--color-primary)]/50"
-                        required
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm text-[var(--color-text-secondary)] mb-1">
-                        To
-                      </label>
-                      <input
-                        type="date"
-                        value={periodEnd}
-                        onChange={(e) => setPeriodEnd(e.target.value)}
-                        className="w-full px-3 py-2 rounded-lg bg-[var(--color-bg-tertiary)] border border-white/5 text-[var(--color-text-primary)] focus:outline-none focus:border-[var(--color-primary)]/50"
-                        required
-                      />
-                    </div>
-                  </div>
-
-                  {/* Custom Title */}
-                  <div>
-                    <label className="block text-sm text-[var(--color-text-secondary)] mb-1">
-                      Custom Title (optional)
-                    </label>
-                    <input
-                      type="text"
-                      value={customTitle}
-                      onChange={(e) => setCustomTitle(e.target.value)}
-                      placeholder="e.g., January 2026 Summary"
-                      className="w-full px-3 py-2 rounded-lg bg-[var(--color-bg-tertiary)] border border-white/5 text-[var(--color-text-primary)] placeholder-[var(--color-text-tertiary)] focus:outline-none focus:border-[var(--color-primary)]/50"
+                  <div className="w-full bg-[var(--color-bg-tertiary)] rounded-full h-2">
+                    <div
+                      className="bg-gradient-to-r from-[var(--color-primary)] to-[var(--color-primary-dark)] h-2 rounded-full transition-all duration-500"
+                      style={{ width: `${cat.percentage}%` }}
                     />
                   </div>
-
-                  {/* Submit */}
-                  <button
-                    type="submit"
-                    disabled={generating}
-                    className="w-full py-3 rounded-xl bg-[var(--color-primary)] text-white font-medium hover:bg-[var(--color-primary-dark)] disabled:opacity-50 disabled:cursor-not-allowed transition-apple flex items-center justify-center gap-2"
-                  >
-                    {generating ? (
-                      <>
-                        <svg className="w-5 h-5 animate-spin" viewBox="0 0 24 24">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/>
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
-                        </svg>
-                        Generating...
-                      </>
-                    ) : (
-                      <>
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                        </svg>
-                        Generate Report
-                      </>
-                    )}
-                  </button>
-                </form>
-              </div>
-            </div>
-          </div>
-
-          {/* Reports List */}
-          <div className="lg:col-span-2">
-            <div className="bg-[var(--color-bg-secondary)] rounded-2xl border border-white/5 p-6">
-              <h2 className="text-lg font-semibold text-[var(--color-text-primary)] mb-4">
-                Generated Reports
-              </h2>
-
-              {loading ? (
-                <div className="space-y-3">
-                  {[1, 2, 3].map((i) => (
-                    <div key={i} className="h-16 rounded-xl bg-[var(--color-bg-tertiary)] animate-pulse" />
-                  ))}
-                </div>
-              ) : reports.length === 0 ? (
-                <div className="text-center py-12">
-                  <svg className="w-16 h-16 mx-auto text-[var(--color-text-tertiary)] mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                  <p className="text-[var(--color-text-secondary)]">No reports generated yet</p>
-                  <p className="text-sm text-[var(--color-text-tertiary)] mt-1">
-                    Use the form to generate your first report
+                  <p className="text-caption text-[var(--color-text-secondary)]">
+                    {cat.transaction_count} transactions
                   </p>
                 </div>
-              ) : (
-                <div className="space-y-3">
-                  {reports.map((report) => (
-                    <div
-                      key={report.id}
-                      className="flex items-center justify-between p-4 rounded-xl bg-[var(--color-bg-tertiary)]/50 hover:bg-[var(--color-bg-tertiary)] transition-apple group"
-                    >
-                      <div className="flex items-center gap-4">
-                        {getFormatIcon(report.report_format)}
-                        <div>
-                          <h3 className="font-medium text-[var(--color-text-primary)]">
-                            {report.title}
-                          </h3>
-                          <div className="flex items-center gap-3 text-sm text-[var(--color-text-tertiary)]">
-                            <span>{formatDate(report.period_start)} - {formatDate(report.period_end)}</span>
-                            <span>•</span>
-                            <span>{formatFileSize(report.file_size)}</span>
-                            <span>•</span>
-                            {getStatusBadge(report.status)}
-                          </div>
-                        </div>
-                      </div>
-                      
-                      <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-apple">
-                        {report.status === 'completed' && (
-                          <button
-                            onClick={() => downloadReport(report.id, report.title)}
-                            className="p-2 rounded-lg bg-[var(--color-primary)]/10 text-[var(--color-primary)] hover:bg-[var(--color-primary)]/20 transition-apple"
-                            title="Download"
-                          >
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                            </svg>
-                          </button>
-                        )}
-                        <button
-                          onClick={() => deleteReport(report.id)}
-                          className="p-2 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-apple"
-                          title="Delete"
-                        >
-                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                          </svg>
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
+              ))}
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Section 4: Category Details */}
+      {!loading && categoryDetails.length > 0 && (
+        <div>
+          <h2 className="text-heading text-[var(--color-text-primary)] mb-4">Category Details</h2>
+          <div className="space-y-4">
+            {categoryDetails.map((detail, index) => (
+              <div key={index} className="card p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-subheading text-[var(--color-text-primary)]">
+                    {detail.category || 'Uncategorized'}
+                  </h3>
+                  <div className="text-right">
+                    <div className="text-heading text-[var(--color-text-primary)]">
+                      {formatCurrency(detail.total)}
+                    </div>
+                    <div className="text-caption text-[var(--color-text-secondary)]">
+                      {detail.count} transactions
+                    </div>
+                  </div>
+                </div>
+                
+                {detail.top_transactions.length > 0 && (
+                  <div>
+                    <p className="text-caption text-[var(--color-text-secondary)] mb-2">
+                      Top transactions:
+                    </p>
+                    <div className="space-y-2">
+                      {detail.top_transactions.slice(0, 5).map((txn, txnIndex) => (
+                        <div
+                          key={txnIndex}
+                          className="flex items-center justify-between py-2 border-b border-[var(--color-border-light)] last:border-b-0"
+                        >
+                          <div className="flex-1">
+                            <p className="text-body text-[var(--color-text-primary)]">
+                              {txn.description}
+                            </p>
+                            <p className="text-caption text-[var(--color-text-secondary)]">
+                              {formatDate(txn.date)}
+                            </p>
+                          </div>
+                          <div className="text-body font-medium text-[var(--color-text-primary)]">
+                            {formatCurrency(txn.amount)}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Section 5: AI-Generated Insights Placeholder */}
+      <div>
+        <h2 className="text-heading text-[var(--color-text-primary)] mb-4">Key Insights</h2>
+        <div className="card p-6">
+          <div className="flex items-start gap-4 mb-4">
+            <div className="p-3 rounded-lg bg-[var(--color-primary)]/10">
+              <svg className="w-6 h-6 text-[var(--color-primary)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+              </svg>
+            </div>
+            <div className="flex-1">
+              <p className="text-body text-[var(--color-text-secondary)] italic">
+                AI-generated insights will appear here when you export the report. These insights will analyze spending patterns, identify trends, and highlight important observations from your financial data.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Section 6: Next Steps */}
+      <div>
+        <h2 className="text-heading text-[var(--color-text-primary)] mb-4">Next Steps</h2>
+        <div className="card p-6">
+          <ul className="space-y-3">
+            <li className="flex items-start gap-3">
+              <svg className="w-5 h-5 text-[var(--color-primary)] mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+              <p className="text-body text-[var(--color-text-secondary)]">
+                Review your top 2-3 spending categories to identify potential savings opportunities
+              </p>
+            </li>
+            <li className="flex items-start gap-3">
+              <svg className="w-5 h-5 text-[var(--color-primary)] mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+              <p className="text-body text-[var(--color-text-secondary)]">
+                Check recurring charges for subscriptions you may no longer need
+              </p>
+            </li>
+            <li className="flex items-start gap-3">
+              <svg className="w-5 h-5 text-[var(--color-primary)] mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+              <p className="text-body text-[var(--color-text-secondary)]">
+                Re-run this report after a few months to track your progress and spending trends
+              </p>
+            </li>
+          </ul>
         </div>
       </div>
     </div>
   );
 }
-

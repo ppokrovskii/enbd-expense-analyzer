@@ -1,0 +1,36 @@
+
+Monthly Financial Report - October 2025
+October 30, 2025 - January 30, 2026
+Generated: 2026-01-03 12:44
+
+═══════════════════════════════════════════════════════════════
+
+SUMMARY
+-------
+Total Income:     AED 904,845.85
+Total Expenses:   AED 302,223.37
+Net Change:       AED 602,622.48
+Transactions:     466
+
+═══════════════════════════════════════════════════════════════
+
+SPENDING BY CATEGORY
+--------------------
+Transfer Between My Accounts AED 154,027.42 ( 51.0%)
+Other                AED  89,208.44 ( 29.5%)
+Shopping             AED  13,079.80 (  4.3%)
+Food & Dining        AED  12,149.98 (  4.0%)
+Groceries            AED   9,706.64 (  3.2%)
+Transport            AED   4,738.53 (  1.6%)
+Telecommunications   AED   3,609.60 (  1.2%)
+Home & Housing       AED   2,860.52 (  0.9%)
+Healthcare           AED   2,238.05 (  0.7%)
+Technology Subscriptions AED   1,988.21 (  0.7%)
+
+═══════════════════════════════════════════════════════════════
+
+MONTHLY TRENDS
+--------------
+Oct 2025        AED   4,375.00 (3 txns)
+Nov 2025        AED 144,068.74 (142 txns)
+Dec 2025        AED 153,779.63 (253 txns)

@@ -20,13 +20,14 @@ class ChatService:
     MAX_CONTEXT_TRANSACTIONS = 1000
     
     @staticmethod
-    def create_session(db: Session, user_id: str, title: Optional[str] = None) -> ChatSession:
+    def create_session(db: Session, user_id: str, title: Optional[str] = None, person_id: Optional[int] = None) -> ChatSession:
         """Create a new chat session."""
         if title is None:
             title = f"New Chat {datetime.utcnow().strftime('%Y-%m-%d %H:%M')}"
         
         session = ChatSession(
             user_id=user_id,
+            person_id=person_id,
             title=title,
             created_at=datetime.utcnow(),
             updated_at=datetime.utcnow()
@@ -37,9 +38,9 @@ class ChatService:
         return session
     
     @staticmethod
-    def list_sessions(db: Session, user_id: str) -> List[Dict[str, Any]]:
-        """List all chat sessions for a user."""
-        sessions = db.query(
+    def list_sessions(db: Session, user_id: str, person_id: Optional[int] = None) -> List[Dict[str, Any]]:
+        """List all chat sessions for a user, optionally filtered by person."""
+        query = db.query(
             ChatSession.id,
             ChatSession.title,
             ChatSession.created_at,
@@ -49,7 +50,13 @@ class ChatService:
             ChatMessage, ChatSession.id == ChatMessage.session_id
         ).filter(
             ChatSession.user_id == user_id
-        ).group_by(
+        )
+        
+        # Filter by person_id if provided
+        if person_id is not None:
+            query = query.filter(ChatSession.person_id == person_id)
+        
+        sessions = query.group_by(
             ChatSession.id, ChatSession.title, ChatSession.created_at, ChatSession.updated_at
         ).order_by(ChatSession.updated_at.desc()).all()
         

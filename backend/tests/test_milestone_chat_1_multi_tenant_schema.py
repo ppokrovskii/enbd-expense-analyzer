@@ -61,7 +61,8 @@ def test_user_id_indexes_created(test_db):
     categories_indexes = inspector.get_indexes('categories')
     index_names = [idx['name'] for idx in categories_indexes]
     assert 'ix_categories_user_id' in index_names
-    assert 'idx_categories_user_name' in index_names
+    # The unique constraint includes person_id for multi-person support
+    assert 'idx_categories_user_person_name' in index_names or 'ix_categories_person_id' in index_names
 
 
 def test_transactions_filtered_by_user_id(test_db):

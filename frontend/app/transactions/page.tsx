@@ -256,6 +256,15 @@ export default function TransactionsPage() {
         endDay = 31;
         break;
       
+      case 'last-year':
+        startYear = now.getFullYear() - 1;
+        startMonth = 1;
+        startDay = 1;
+        endYear = now.getFullYear() - 1;
+        endMonth = 12;
+        endDay = 31;
+        break;
+      
       case 'last-7-days': {
         const sevenDaysAgo = new Date(now);
         sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
@@ -320,55 +329,6 @@ export default function TransactionsPage() {
         </p>
       </div>
 
-      {/* Summary Metric Cards */}
-      {statsLoading ? (
-        <SkeletonLoader variant="metric" />
-      ) : statsError ? (
-        <div className="card p-4 bg-red-50 border border-red-200">
-          <p className="text-body text-red-800">{statsError}</p>
-        </div>
-      ) : stats ? (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <MetricCard
-            title="Total Spending"
-            value={stats.total_expenses}
-            format="currency"
-            gradient
-            gradientType="expense"
-            icon={
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
-              </svg>
-            }
-          />
-          <MetricCard
-            title="Total Income"
-            value={stats.total_income}
-            format="currency"
-            gradient
-            gradientType="income"
-            icon={
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-            }
-          />
-          <MetricCard
-            title="Net Balance"
-            value={stats.net}
-            format="currency"
-            gradient
-            gradientType={stats.net >= 0 ? "success" : "expense"}
-            changeType={stats.net >= 0 ? "increase" : "decrease"}
-            icon={
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-              </svg>
-            }
-          />
-        </div>
-      ) : null}
-
       {/* Date and Merchant Filters */}
       <div className="card p-6 space-y-4">
         {/* Quick Date Filters */}
@@ -419,6 +379,12 @@ export default function TransactionsPage() {
               className="px-3 py-1.5 text-caption rounded-lg bg-[var(--color-bg-tertiary)] text-[var(--color-text-primary)] hover:bg-[var(--color-primary)] hover:text-white transition-apple"
             >
               This Year
+            </button>
+            <button
+              onClick={() => handleQuickFilter('last-year')}
+              className="px-3 py-1.5 text-caption rounded-lg bg-[var(--color-bg-tertiary)] text-[var(--color-text-primary)] hover:bg-[var(--color-primary)] hover:text-white transition-apple"
+            >
+              Last Year
             </button>
           </div>
         </div>
@@ -493,6 +459,55 @@ export default function TransactionsPage() {
           )}
         </div>
       </div>
+
+      {/* Summary Metric Cards */}
+      {statsLoading ? (
+        <SkeletonLoader variant="metric" />
+      ) : statsError ? (
+        <div className="card p-4 bg-red-50 border border-red-200">
+          <p className="text-body text-red-800">{statsError}</p>
+        </div>
+      ) : stats ? (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <MetricCard
+            title="Total Spending"
+            value={stats.total_expenses}
+            format="currency"
+            gradient
+            gradientType="expense"
+            icon={
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+              </svg>
+            }
+          />
+          <MetricCard
+            title="Total Income"
+            value={stats.total_income}
+            format="currency"
+            gradient
+            gradientType="income"
+            icon={
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            }
+          />
+          <MetricCard
+            title="Net Balance"
+            value={stats.net}
+            format="currency"
+            gradient
+            gradientType={stats.net >= 0 ? "success" : "expense"}
+            changeType={stats.net >= 0 ? "increase" : "decrease"}
+            icon={
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+              </svg>
+            }
+          />
+        </div>
+      ) : null}
 
       {/* Spending Chart */}
       <div>

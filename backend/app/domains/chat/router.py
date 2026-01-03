@@ -5,7 +5,7 @@ from typing import List, Optional
 from pydantic import BaseModel
 
 from app.shared.database import get_db
-from app.shared.dependencies import get_user_id
+from app.shared.dependencies import get_user_id, get_person_id
 from .service import ChatService
 
 
@@ -112,9 +112,14 @@ class SessionDetailResponse(BaseModel):
 
 
 @router.post("/sessions", response_model=SessionResponse, status_code=status.HTTP_201_CREATED)
-def create_session(request: CreateSessionRequest, db: Session = Depends(get_db), user_id: str = Depends(get_user_id)):
+def create_session(
+    request: CreateSessionRequest, 
+    db: Session = Depends(get_db), 
+    user_id: str = Depends(get_user_id),
+    person_id: Optional[int] = Depends(get_person_id)
+):
     """Create a new chat session."""
-    session = ChatService.create_session(db, user_id, request.title)
+    session = ChatService.create_session(db, user_id, request.title, person_id)
     return SessionResponse(
         id=str(session.id),
         title=session.title,
@@ -125,9 +130,13 @@ def create_session(request: CreateSessionRequest, db: Session = Depends(get_db),
 
 
 @router.get("/sessions", response_model=List[SessionResponse])
-def list_sessions(db: Session = Depends(get_db), user_id: str = Depends(get_user_id)):
-    """List all chat sessions for the current user."""
-    sessions = ChatService.list_sessions(db, user_id)
+def list_sessions(
+    db: Session = Depends(get_db), 
+    user_id: str = Depends(get_user_id),
+    person_id: Optional[int] = Depends(get_person_id)
+):
+    """List all chat sessions for the current user and active person."""
+    sessions = ChatService.list_sessions(db, user_id, person_id)
     return [SessionResponse(**session) for session in sessions]
 
 
