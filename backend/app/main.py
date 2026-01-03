@@ -11,6 +11,9 @@ from app.domains.accounts import router as accounts_router
 from app.domains.jobs import router as jobs_router
 from app.domains.notifications import router as notifications_router
 from app.domains.persons import router as persons_router
+from app.domains.recurring import router as recurring_router
+from app.domains.insights import router as insights_router
+from app.domains.reports import router as reports_router
 
 # Import shared database
 from app.shared.database import get_db, engine, SessionLocal
@@ -22,6 +25,9 @@ from app.domains.chat.models import ChatSession, ChatMessage, ChatContext, Token
 from app.domains.accounts.models import UserAccount
 from app.domains.jobs.models import BackgroundJob
 from app.domains.persons.models import Person
+from app.domains.recurring.models import RecurringGroup, RecurringOccurrence
+from app.domains.insights.models import Insight
+from app.domains.reports.models import Report
 
 
 @asynccontextmanager
@@ -69,6 +75,9 @@ app.include_router(accounts_router)      # /api/accounts/*
 app.include_router(jobs_router)          # /api/jobs/*
 app.include_router(notifications_router) # /ws
 app.include_router(persons_router)       # /api/persons/*
+app.include_router(recurring_router)     # /api/recurring/*
+app.include_router(insights_router)      # /api/insights/*
+app.include_router(reports_router)       # /api/reports/*
 
 
 @app.get("/")
@@ -86,7 +95,10 @@ def root():
             "accounts",
             "jobs",
             "notifications",
-            "persons"
+            "persons",
+            "recurring",
+            "insights",
+            "reports"
         ]
     }
 

@@ -1,0 +1,431 @@
+"""Tests for Milestone 5: Reports Domain."""
+import pytest
+import hashlib
+from datetime import date, timedelta
+from decimal import Decimal
+from pathlib import Path
+from sqlalchemy.orm import Session
+from app.domains.reports.service import ReportService, REPORTS_DIR
+from app.domains.reports.models import ReportFormat, ReportType, ReportStatus
+from app.domains.transactions.models import Transaction
+
+
+def create_test_transactions(
+    db: Session, 
+    user_id: str, 
+    category: str,
+    count: int,
+    base_amount: float,
+    start_date: date,
+    merchant: str = "TEST MERCHANT"
+):
+    """Helper to create test transactions."""
+    transactions = []
+    for i in range(count):
+        hash_input = f"{merchant}_{user_id}_{category}_{i}_report"
+        short_hash = hashlib.md5(hash_input.encode()).hexdigest()[:30]
+        
+        txn = Transaction(
+            user_id=user_id,
+            date=start_date + timedelta(days=i),
+            account="Credit Card",
+            description=f"{merchant} PAYMENT",
+            merchant=merchant,
+            category=category,
+            debit_credit="D",
+            amount=Decimal(str(base_amount)),
+            amount_signed=Decimal(str(-base_amount)),
+            transaction_hash=short_hash
+        )
+        db.add(txn)
+        transactions.append(txn)
+    db.commit()
+    return transactions
+
+
+def test_generate_json_report(test_db: Session):
+    """Test generating a JSON report."""
+    user_id = "report_json_user"
+    start_date = date.today() - timedelta(days=30)
+    end_date = date.today()
+    
+    # Create test data
+    create_test_transactions(test_db, user_id, "Groceries", 10, 50.0, start_date)
+    create_test_transactions(test_db, user_id, "Restaurants", 5, 30.0, start_date)
+    
+    report = ReportService.generate_report(
+        db=test_db,
+        user_id=user_id,
+        report_type=ReportType.CUSTOM_PERIOD,
+        report_format=ReportFormat.JSON,
+        period_start=start_date,
+        period_end=end_date,
+    )
+    
+    assert report.status == ReportStatus.COMPLETED.value
+    assert report.file_path is not None
+    assert report.file_size > 0
+    assert Path(report.file_path).exists()
+    
+    # Verify metadata
+    assert report.metadata_json is not None
+    assert "summary" in report.metadata_json
+    assert report.metadata_json["summary"]["transaction_count"] == 15
+    
+    # Cleanup
+    Path(report.file_path).unlink(missing_ok=True)
+
+
+def test_generate_pdf_report(test_db: Session):
+    """Test generating a PDF report."""
+    user_id = "report_pdf_user"
+    start_date = date.today() - timedelta(days=30)
+    end_date = date.today()
+    
+    create_test_transactions(test_db, user_id, "Shopping", 8, 100.0, start_date)
+    
+    report = ReportService.generate_report(
+        db=test_db,
+        user_id=user_id,
+        report_type=ReportType.MONTHLY_SUMMARY,
+        report_format=ReportFormat.PDF,
+        period_start=start_date,
+        period_end=end_date,
+    )
+    
+    assert report.status == ReportStatus.COMPLETED.value
+    assert report.file_path is not None
+    
+    # Cleanup
+    Path(report.file_path).unlink(missing_ok=True)
+
+
+def test_generate_excel_report(test_db: Session):
+    """Test generating an Excel report."""
+    user_id = "report_excel_user"
+    start_date = date.today() - timedelta(days=30)
+    end_date = date.today()
+    
+    create_test_transactions(test_db, user_id, "Transport", 6, 25.0, start_date)
+    
+    report = ReportService.generate_report(
+        db=test_db,
+        user_id=user_id,
+        report_type=ReportType.CATEGORY_BREAKDOWN,
+        report_format=ReportFormat.EXCEL,
+        period_start=start_date,
+        period_end=end_date,
+    )
+    
+    assert report.status == ReportStatus.COMPLETED.value
+    assert report.file_path is not None
+    
+    # Cleanup
+    Path(report.file_path).unlink(missing_ok=True)
+
+
+def test_report_category_breakdown(test_db: Session):
+    """Test that category breakdown is calculated correctly."""
+    user_id = "category_breakdown_user"
+    start_date = date.today() - timedelta(days=25)
+    end_date = date.today()
+    
+    # Create varied categories
+    create_test_transactions(test_db, user_id, "Groceries", 5, 100.0, start_date, "CARREFOUR")
+    create_test_transactions(test_db, user_id, "Dining", 3, 50.0, start_date, "RESTAURANT")
+    create_test_transactions(test_db, user_id, "Transport", 2, 25.0, start_date, "RTA")
+    
+    report = ReportService.generate_report(
+        db=test_db,
+        user_id=user_id,
+        report_type=ReportType.CUSTOM_PERIOD,
+        report_format=ReportFormat.JSON,
+        period_start=start_date,
+        period_end=end_date,
+    )
+    
+    # Check category breakdown
+    categories = report.metadata_json["categories"]
+    assert len(categories) == 3
+    
+    # Groceries should be the largest
+    assert categories[0]["name"] == "Groceries"
+    assert categories[0]["total"] == 500.0  # 5 * 100
+    
+    # Cleanup
+    Path(report.file_path).unlink(missing_ok=True)
+
+
+def test_report_monthly_trends(test_db: Session):
+    """Test that monthly trends are calculated correctly."""
+    user_id = "monthly_trends_user"
+    
+    # Create transactions across two months
+    month1_start = date.today().replace(day=1) - timedelta(days=60)
+    month2_start = date.today().replace(day=1) - timedelta(days=30)
+    
+    create_test_transactions(test_db, user_id, "Test", 10, 50.0, month1_start, "MONTH1")
+    create_test_transactions(test_db, user_id, "Test", 5, 100.0, month2_start, "MONTH2")
+    
+    report = ReportService.generate_report(
+        db=test_db,
+        user_id=user_id,
+        report_type=ReportType.CUSTOM_PERIOD,
+        report_format=ReportFormat.JSON,
+        period_start=month1_start,
+        period_end=date.today(),
+    )
+    
+    trends = report.metadata_json["monthly_trends"]
+    assert len(trends) >= 2  # At least 2 months
+    
+    # Cleanup
+    Path(report.file_path).unlink(missing_ok=True)
+
+
+def test_report_user_isolation(test_db: Session):
+    """Test that reports are isolated per user."""
+    start_date = date.today() - timedelta(days=25)
+    end_date = date.today()
+    
+    # Create data for two users
+    create_test_transactions(test_db, "user1", "Shopping", 5, 100.0, start_date, "USER1 SHOP")
+    create_test_transactions(test_db, "user2", "Dining", 3, 50.0, start_date, "USER2 RESTAURANT")
+    
+    # Generate reports for each user
+    report1 = ReportService.generate_report(
+        db=test_db,
+        user_id="user1",
+        report_type=ReportType.CUSTOM_PERIOD,
+        report_format=ReportFormat.JSON,
+        period_start=start_date,
+        period_end=end_date,
+    )
+    
+    report2 = ReportService.generate_report(
+        db=test_db,
+        user_id="user2",
+        report_type=ReportType.CUSTOM_PERIOD,
+        report_format=ReportFormat.JSON,
+        period_start=start_date,
+        period_end=end_date,
+    )
+    
+    # Verify isolation
+    assert report1.metadata_json["summary"]["total_expenses"] == 500.0  # 5 * 100
+    assert report2.metadata_json["summary"]["total_expenses"] == 150.0  # 3 * 50
+    
+    # Cleanup
+    Path(report1.file_path).unlink(missing_ok=True)
+    Path(report2.file_path).unlink(missing_ok=True)
+
+
+def test_report_title_generation(test_db: Session):
+    """Test automatic title generation for different report types."""
+    user_id = "title_test_user"
+    start_date = date(2025, 1, 1)
+    end_date = date(2025, 1, 31)
+    
+    create_test_transactions(test_db, user_id, "Test", 5, 10.0, start_date)
+    
+    # Monthly report
+    monthly_report = ReportService.generate_report(
+        db=test_db,
+        user_id=user_id,
+        report_type=ReportType.MONTHLY_SUMMARY,
+        report_format=ReportFormat.JSON,
+        period_start=start_date,
+        period_end=end_date,
+    )
+    assert "January" in monthly_report.title or "Monthly" in monthly_report.title
+    
+    # Annual report
+    annual_report = ReportService.generate_report(
+        db=test_db,
+        user_id=user_id,
+        report_type=ReportType.ANNUAL_SUMMARY,
+        report_format=ReportFormat.JSON,
+        period_start=date(2025, 1, 1),
+        period_end=date(2025, 12, 31),
+    )
+    assert "2025" in annual_report.title or "Annual" in annual_report.title
+    
+    # Cleanup
+    Path(monthly_report.file_path).unlink(missing_ok=True)
+    Path(annual_report.file_path).unlink(missing_ok=True)
+
+
+def test_custom_title(test_db: Session):
+    """Test using a custom title for reports."""
+    user_id = "custom_title_user"
+    start_date = date.today() - timedelta(days=25)
+    end_date = date.today()
+    
+    create_test_transactions(test_db, user_id, "Test", 5, 10.0, start_date)
+    
+    custom_title = "My Custom Financial Report"
+    report = ReportService.generate_report(
+        db=test_db,
+        user_id=user_id,
+        report_type=ReportType.CUSTOM_PERIOD,
+        report_format=ReportFormat.JSON,
+        period_start=start_date,
+        period_end=end_date,
+        title=custom_title,
+    )
+    
+    assert report.title == custom_title
+    
+    # Cleanup
+    Path(report.file_path).unlink(missing_ok=True)
+
+
+def test_get_user_reports(test_db: Session):
+    """Test retrieving user's reports."""
+    user_id = "list_reports_user"
+    start_date = date.today() - timedelta(days=25)
+    end_date = date.today()
+    
+    create_test_transactions(test_db, user_id, "Test", 5, 10.0, start_date)
+    
+    # Generate multiple reports
+    report1 = ReportService.generate_report(
+        db=test_db,
+        user_id=user_id,
+        report_type=ReportType.CUSTOM_PERIOD,
+        report_format=ReportFormat.JSON,
+        period_start=start_date,
+        period_end=end_date,
+    )
+    
+    report2 = ReportService.generate_report(
+        db=test_db,
+        user_id=user_id,
+        report_type=ReportType.MONTHLY_SUMMARY,
+        report_format=ReportFormat.JSON,
+        period_start=start_date,
+        period_end=end_date,
+    )
+    
+    # Retrieve reports
+    reports = ReportService.get_user_reports(test_db, user_id)
+    
+    assert len(reports) >= 2
+    
+    # Cleanup
+    Path(report1.file_path).unlink(missing_ok=True)
+    Path(report2.file_path).unlink(missing_ok=True)
+
+
+def test_delete_report(test_db: Session):
+    """Test deleting a report."""
+    user_id = "delete_report_user"
+    start_date = date.today() - timedelta(days=25)
+    end_date = date.today()
+    
+    create_test_transactions(test_db, user_id, "Test", 5, 10.0, start_date)
+    
+    report = ReportService.generate_report(
+        db=test_db,
+        user_id=user_id,
+        report_type=ReportType.CUSTOM_PERIOD,
+        report_format=ReportFormat.JSON,
+        period_start=start_date,
+        period_end=end_date,
+    )
+    
+    file_path = Path(report.file_path)
+    assert file_path.exists()
+    
+    # Delete the report
+    success = ReportService.delete_report(test_db, str(report.id), user_id)
+    assert success
+    
+    # Verify file is deleted
+    assert not file_path.exists()
+    
+    # Verify report is removed from DB
+    retrieved = ReportService.get_report(test_db, str(report.id), user_id)
+    assert retrieved is None
+
+
+def test_report_with_no_transactions(test_db: Session):
+    """Test generating a report with no transactions."""
+    user_id = "empty_report_user"
+    start_date = date.today() - timedelta(days=25)
+    end_date = date.today()
+    
+    report = ReportService.generate_report(
+        db=test_db,
+        user_id=user_id,
+        report_type=ReportType.CUSTOM_PERIOD,
+        report_format=ReportFormat.JSON,
+        period_start=start_date,
+        period_end=end_date,
+    )
+    
+    assert report.status == ReportStatus.COMPLETED.value
+    assert report.metadata_json["summary"]["transaction_count"] == 0
+    assert report.metadata_json["summary"]["total_expenses"] == 0
+    
+    # Cleanup
+    Path(report.file_path).unlink(missing_ok=True)
+
+
+def test_report_data_to_dict(test_db: Session):
+    """Test that ReportData can be serialized to dict."""
+    user_id = "dict_report_user"
+    start_date = date.today() - timedelta(days=25)
+    end_date = date.today()
+    
+    create_test_transactions(test_db, user_id, "Test", 5, 50.0, start_date)
+    
+    report = ReportService.generate_report(
+        db=test_db,
+        user_id=user_id,
+        report_type=ReportType.CUSTOM_PERIOD,
+        report_format=ReportFormat.JSON,
+        period_start=start_date,
+        period_end=end_date,
+    )
+    
+    data = report.metadata_json
+    
+    assert "title" in data
+    assert "subtitle" in data
+    assert "period" in data
+    assert "summary" in data
+    assert "categories" in data
+    assert "monthly_trends" in data
+    assert "insights" in data
+    assert "recurring" in data
+    
+    # Cleanup
+    Path(report.file_path).unlink(missing_ok=True)
+
+
+def test_report_includes_insights(test_db: Session):
+    """Test that reports include generated insights."""
+    user_id = "insights_report_user"
+    start_date = date.today() - timedelta(days=25)
+    end_date = date.today()
+    
+    # Create enough transactions to generate insights
+    create_test_transactions(test_db, user_id, "Shopping", 15, 100.0, start_date, "SHOP A")
+    
+    report = ReportService.generate_report(
+        db=test_db,
+        user_id=user_id,
+        report_type=ReportType.CUSTOM_PERIOD,
+        report_format=ReportFormat.JSON,
+        period_start=start_date,
+        period_end=end_date,
+    )
+    
+    # Insights should be included (may be empty if no patterns detected)
+    assert "insights" in report.metadata_json
+    assert isinstance(report.metadata_json["insights"], list)
+    
+    # Cleanup
+    Path(report.file_path).unlink(missing_ok=True)
+
