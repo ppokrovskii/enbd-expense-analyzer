@@ -55,9 +55,20 @@ export default function SpendingChart({
   const [isRefreshing, setIsRefreshing] = useState(false); // New state for subsequent loads
   const [error, setError] = useState<string | null>(null);
   const [categoryColors, setCategoryColors] = useState<Record<string, string>>({});
+  const [personVersion, setPersonVersion] = useState(0); // Track person changes
   const fetchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Fetch category colors on mount
+  // Listen for person changes
+  useEffect(() => {
+    const handlePersonChange = () => {
+      setPersonVersion(v => v + 1);
+    };
+    
+    window.addEventListener('personChanged', handlePersonChange);
+    return () => window.removeEventListener('personChanged', handlePersonChange);
+  }, []);
+
+  // Fetch category colors on mount and when person changes
   useEffect(() => {
     const fetchCategoryColors = async () => {
       try {
@@ -79,7 +90,7 @@ export default function SpendingChart({
       }
     };
     fetchCategoryColors();
-  }, []);
+  }, [personVersion]);
 
   useEffect(() => {
     // Debounce rapid filter changes to prevent jumping
@@ -97,7 +108,8 @@ export default function SpendingChart({
         clearTimeout(fetchTimeoutRef.current);
       }
     };
-  }, [filters.startDate, filters.endDate, filters.accounts, filters.merchant, filters.groupBy, filterMode, filteredCategories]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filters.startDate, filters.endDate, filters.accounts, filters.merchant, filters.groupBy, filterMode, filteredCategories, personVersion]);
 
   const fetchCategoryTotals = async () => {
     // Fetch totals for all categories without category filter

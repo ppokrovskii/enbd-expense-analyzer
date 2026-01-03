@@ -324,11 +324,15 @@ def get_monthly_chart_data(
 def get_summary_stats(
     db: Session = Depends(get_db),
     user_id: str = Depends(get_user_id),
+    person_id: Optional[int] = Depends(get_person_id),
     start_date: Optional[date] = Query(None),
     end_date: Optional[date] = Query(None)
 ):
     """Get summary statistics for transactions."""
     query = db.query(Transaction).filter(Transaction.user_id == user_id)
+    
+    if person_id is not None:
+        query = query.filter(Transaction.person_id == person_id)
     
     if start_date:
         query = query.filter(Transaction.date >= start_date)
@@ -359,25 +363,31 @@ def get_summary_stats(
 @router.get("/filters/options")
 def get_filter_options(
     db: Session = Depends(get_db),
-    user_id: str = Depends(get_user_id)
+    user_id: str = Depends(get_user_id),
+    person_id: Optional[int] = Depends(get_person_id)
 ):
     """Get available filter options (categories, accounts, date range)."""
+    # Build base filter
+    base_filter = [Transaction.user_id == user_id]
+    if person_id is not None:
+        base_filter.append(Transaction.person_id == person_id)
+    
     # Get unique categories (excluding None)
     categories = db.query(Transaction.category).filter(
-        Transaction.user_id == user_id,
+        *base_filter,
         Transaction.category.isnot(None)
     ).distinct().order_by(Transaction.category).all()
     categories_list = [c[0] for c in categories]
     
     # Get unique accounts
     accounts = db.query(Transaction.account).filter(
-        Transaction.user_id == user_id
+        *base_filter
     ).distinct().order_by(Transaction.account).all()
     accounts_list = [a[0] for a in accounts]
     
     # Get date range
-    min_date = db.query(func.min(Transaction.date)).filter(Transaction.user_id == user_id).scalar()
-    max_date = db.query(func.max(Transaction.date)).filter(Transaction.user_id == user_id).scalar()
+    min_date = db.query(func.min(Transaction.date)).filter(*base_filter).scalar()
+    max_date = db.query(func.max(Transaction.date)).filter(*base_filter).scalar()
     
     return {
         "categories": categories_list,

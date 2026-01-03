@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
+import { getApiHeaders } from "../utils/api";
 
 interface SummaryStats {
   total_income: number;
@@ -20,6 +21,16 @@ export function useStats(options: UseStatsOptions = {}) {
   const [error, setError] = useState<string | null>(null);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
 
+  // Listen for person changes
+  useEffect(() => {
+    const handlePersonChange = () => {
+      setRefreshTrigger(prev => prev + 1);
+    };
+    
+    window.addEventListener('personChanged', handlePersonChange);
+    return () => window.removeEventListener('personChanged', handlePersonChange);
+  }, []);
+
   const fetchStats = async () => {
     setLoading(true);
     setError(null);
@@ -30,7 +41,8 @@ export function useStats(options: UseStatsOptions = {}) {
       if (options.endDate) params.append("end_date", options.endDate);
 
       const response = await fetch(
-        `http://localhost:8000/api/stats/summary${params.toString() ? `?${params.toString()}` : ""}`
+        `http://localhost:8000/api/stats/summary${params.toString() ? `?${params.toString()}` : ""}`,
+        { headers: getApiHeaders() }
       );
 
       if (!response.ok) {
@@ -48,6 +60,7 @@ export function useStats(options: UseStatsOptions = {}) {
 
   useEffect(() => {
     fetchStats();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [options.startDate, options.endDate, refreshTrigger]);
 
   const refresh = () => {

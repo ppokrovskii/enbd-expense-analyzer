@@ -86,6 +86,20 @@ export default function TransactionList({
     fetchCategoryColors();
   }, []);
 
+  // Track person changes to trigger re-fetch
+  const [personVersion, setPersonVersion] = useState(0);
+  
+  // Listen for person changes
+  useEffect(() => {
+    const handlePersonChange = () => {
+      setPersonVersion(v => v + 1);
+      setCurrentPage(1);
+    };
+    
+    window.addEventListener('personChanged', handlePersonChange);
+    return () => window.removeEventListener('personChanged', handlePersonChange);
+  }, []);
+
   // Reset to page 1 when filters, selected categories, or sorting changes
   useEffect(() => {
     setCurrentPage(1);
@@ -99,7 +113,7 @@ export default function TransactionList({
       accounts: [],
       merchant: ""
     });
-  }, [currentPage, filters, filterMode, filteredCategories, pageSize, sortBy, sortOrder]);
+  }, [currentPage, filters, filterMode, filteredCategories, pageSize, sortBy, sortOrder, personVersion]);
   
   // Save page size to localStorage when it changes
   const handlePageSizeChange = (newSize: number) => {

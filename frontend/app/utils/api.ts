@@ -18,14 +18,21 @@ if (typeof window !== 'undefined') {
 
 /**
  * Set the active person ID (called when switching persons)
+ * Dispatches a custom event so components can re-fetch data
  */
 export function setActivePersonId(personId: number | null): void {
+  const previousPersonId = activePersonId;
   activePersonId = personId;
   if (typeof window !== 'undefined') {
     if (personId !== null) {
       localStorage.setItem('activePersonId', String(personId));
     } else {
       localStorage.removeItem('activePersonId');
+    }
+    
+    // Dispatch event if person changed (so components can re-fetch)
+    if (previousPersonId !== personId) {
+      window.dispatchEvent(new CustomEvent('personChanged', { detail: { personId } }));
     }
   }
 }
