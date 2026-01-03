@@ -144,6 +144,33 @@ export function usePerson() {
     }
   }, [fetchPersons]);
 
+  const updatePerson = useCallback(async (personId: number, name: string) => {
+    try {
+      const response = await fetch(`${API_URL}/api/persons/${personId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-User-Id': 'default_user',
+        },
+        body: JSON.stringify({ name }),
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to update person');
+      }
+      
+      const data = await response.json();
+      
+      // Refresh the list
+      await fetchPersons();
+      
+      return data;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unknown error');
+      return null;
+    }
+  }, [fetchPersons]);
+
   useEffect(() => {
     fetchPersons();
   }, [fetchPersons]);
@@ -156,6 +183,7 @@ export function usePerson() {
     switchPerson,
     createPerson,
     deletePerson,
+    updatePerson,
     refresh: fetchPersons,
   };
 }

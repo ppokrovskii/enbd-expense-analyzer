@@ -4,11 +4,15 @@ import { useState, useRef, useEffect } from "react";
 import { usePerson, Person } from "../hooks/usePerson";
 
 export default function PersonSwitcher() {
-  const { persons, activePerson, loading, switchPerson, createPerson, deletePerson } = usePerson();
+  const { persons, activePerson, loading, switchPerson, createPerson, deletePerson, updatePerson } = usePerson();
   const [isOpen, setIsOpen] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editingPerson, setEditingPerson] = useState<Person | null>(null);
   const [newPersonName, setNewPersonName] = useState("");
+  const [editPersonName, setEditPersonName] = useState("");
   const [isCreating, setIsCreating] = useState(false);
+  const [isUpdating, setIsUpdating] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   // Close dropdown when clicking outside
@@ -37,6 +41,26 @@ export default function PersonSwitcher() {
     setNewPersonName("");
     setShowAddModal(false);
     setIsCreating(false);
+  };
+
+  const handleEditPerson = (person: Person, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditingPerson(person);
+    setEditPersonName(person.name);
+    setShowEditModal(true);
+    setIsOpen(false);
+  };
+
+  const handleUpdatePerson = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editPersonName.trim() || !editingPerson) return;
+
+    setIsUpdating(true);
+    await updatePerson(editingPerson.id, editPersonName.trim());
+    setEditPersonName("");
+    setEditingPerson(null);
+    setShowEditModal(false);
+    setIsUpdating(false);
   };
 
   const handleDeletePerson = async (personId: number, e: React.MouseEvent) => {
@@ -85,7 +109,7 @@ export default function PersonSwitcher() {
 
       {/* Dropdown Menu */}
       {isOpen && (
-        <div className="absolute right-0 mt-2 w-64 bg-[var(--color-bg-secondary)] rounded-xl border border-white/5 shadow-2xl overflow-hidden z-50">
+        <div className="absolute right-0 mt-2 w-72 bg-[var(--color-bg-secondary)] rounded-xl border border-white/5 shadow-2xl overflow-hidden z-50">
           <div className="p-2">
             <div className="text-xs font-medium text-[var(--color-text-tertiary)] px-3 py-2 uppercase tracking-wider">
               Switch Person
@@ -113,13 +137,25 @@ export default function PersonSwitcher() {
                   <span className="text-sm font-medium">{person.name}</span>
                 </div>
                 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1">
                   {person.is_active && (
                     <span className="text-xs px-2 py-0.5 rounded-full bg-[var(--color-primary)]/20 text-[var(--color-primary)]">
                       Active
                     </span>
                   )}
                   
+                  {/* Edit Button */}
+                  <button
+                    onClick={(e) => handleEditPerson(person, e)}
+                    className="p-1 rounded hover:bg-[var(--color-primary)]/10 text-[var(--color-text-tertiary)] hover:text-[var(--color-primary)] transition-apple"
+                    title="Rename person"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                    </svg>
+                  </button>
+                  
+                  {/* Delete Button (only if more than 1 person) */}
                   {persons.length > 1 && (
                     <button
                       onClick={(e) => handleDeletePerson(person.id, e)}
@@ -159,8 +195,8 @@ export default function PersonSwitcher() {
 
       {/* Add Person Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
-          <div className="bg-[var(--color-bg-secondary)] rounded-2xl border border-white/5 p-6 w-96 shadow-2xl">
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-start justify-center pt-[20vh] z-50">
+          <div className="bg-[var(--color-bg-secondary)] rounded-2xl border border-white/5 p-6 w-96 shadow-2xl animate-in fade-in slide-in-from-top-4 duration-200">
             <h3 className="text-lg font-semibold text-[var(--color-text-primary)] mb-4">
               Add New Person
             </h3>
@@ -198,7 +234,49 @@ export default function PersonSwitcher() {
           </div>
         </div>
       )}
+
+      {/* Edit Person Modal */}
+      {showEditModal && editingPerson && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-start justify-center pt-[20vh] z-50">
+          <div className="bg-[var(--color-bg-secondary)] rounded-2xl border border-white/5 p-6 w-96 shadow-2xl animate-in fade-in slide-in-from-top-4 duration-200">
+            <h3 className="text-lg font-semibold text-[var(--color-text-primary)] mb-4">
+              Rename Person
+            </h3>
+            
+            <form onSubmit={handleUpdatePerson}>
+              <input
+                type="text"
+                value={editPersonName}
+                onChange={(e) => setEditPersonName(e.target.value)}
+                placeholder="Enter new name"
+                className="w-full px-4 py-3 rounded-lg bg-[var(--color-bg-tertiary)] border border-white/5 text-[var(--color-text-primary)] placeholder-[var(--color-text-tertiary)] focus:outline-none focus:border-[var(--color-primary)]/50 transition-apple"
+                autoFocus
+              />
+              
+              <div className="flex gap-3 mt-4">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowEditModal(false);
+                    setEditPersonName("");
+                    setEditingPerson(null);
+                  }}
+                  className="flex-1 px-4 py-2 rounded-lg border border-white/10 text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)] transition-apple"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={!editPersonName.trim() || isUpdating}
+                  className="flex-1 px-4 py-2 rounded-lg bg-[var(--color-primary)] text-white font-medium hover:bg-[var(--color-primary-dark)] disabled:opacity-50 disabled:cursor-not-allowed transition-apple"
+                >
+                  {isUpdating ? "Saving..." : "Save"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
-
