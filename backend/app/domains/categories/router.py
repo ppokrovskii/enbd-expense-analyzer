@@ -422,9 +422,13 @@ def get_category_all_merchants(
 @router.post("/categories/ai-bulk-suggest", response_model=List[AIBulkSuggestion])
 def ai_bulk_suggest(
     request: AIBulkSuggestRequest,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    user_id: str = Depends(get_user_id)
 ):
-    """Get AI suggestions for categorizing merchants in bulk."""
+    """Get AI suggestions for categorizing merchants in bulk.
+    
+    SECURITY: All queries are filtered by user_id to ensure data isolation.
+    """
     try:
         llm_service = LLMCategorizationService(db)
     except ValueError as e:
@@ -437,7 +441,9 @@ def ai_bulk_suggest(
     elif request.level == "merchant" and request.merchant:
         merchant_list = [request.merchant]
     else:
+        # SECURITY: Filter by user_id
         merchants_query = db.query(Transaction.merchant.distinct()).filter(
+            Transaction.user_id == user_id,
             Transaction.category.in_([None, 'Other', '']),
             Transaction.date >= cutoff_date
         ).all()
@@ -455,12 +461,12 @@ def ai_bulk_suggest(
         if not merchant_name:
             continue
         
-        # FIX: Filter stats by date range AND only uncategorized transactions
-        # This matches the same criteria used to generate the suggestion
+        # SECURITY: Filter stats by user_id, date range, AND only uncategorized transactions
         stats = db.query(
             func.count(Transaction.id).label('count'),
             func.sum(Transaction.amount_signed).label('amount')
         ).filter(
+            Transaction.user_id == user_id,
             Transaction.merchant == merchant_name,
             Transaction.date >= cutoff_date,
             or_(
@@ -486,9 +492,13 @@ def ai_bulk_suggest(
 @router.post("/categories/ai-bulk-apply")
 def ai_bulk_apply(
     request: AIBulkApplyRequest,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    user_id: str = Depends(get_user_id)
 ):
-    """Apply AI bulk suggestions to create/update rules and categorize transactions."""
+    """Apply AI bulk suggestions to create/update rules and categorize transactions.
+    
+    SECURITY: All queries are filtered by user_id to ensure data isolation.
+    """
     if not request.suggestions:
         return {"message": "No suggestions to apply"}
     
@@ -505,18 +515,25 @@ def ai_bulk_apply(
         if not merchant or not category_name:
             continue
         
-        category = db.query(Category).filter(Category.name == category_name).first()
+        # SECURITY: Filter category by user_id
+        category = db.query(Category).filter(
+            Category.name == category_name,
+            Category.user_id == user_id
+        ).first()
         
         if not category:
             if create_new:
-                category = Category(name=category_name, keywords=[])
+                # SECURITY: Create category with user_id
+                category = Category(name=category_name, user_id=user_id, keywords=[])
                 db.add(category)
                 db.commit()
                 created_categories.append(category_name)
             else:
                 continue
         
+        # SECURITY: Only update transactions belonging to this user
         count = db.query(Transaction).filter(
+            Transaction.user_id == user_id,
             Transaction.merchant == merchant
         ).update({"category": category_name})
         
@@ -526,7 +543,8 @@ def ai_bulk_apply(
     
     if request.auto_create_rules:
         category_service = CategoryService()
-        additional_affected = category_service.categorize_transactions(db, force_recategorize_all=True)
+        # SECURITY: Pass user_id to ensure only user's transactions are processed
+        additional_affected = category_service.categorize_transactions(db, user_id=user_id, force_recategorize_all=True)
         transactions_affected += additional_affected
     
     return {
