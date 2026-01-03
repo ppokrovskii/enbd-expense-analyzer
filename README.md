@@ -6,7 +6,10 @@ A modern web application for analyzing ENBD bank transaction exports with AI-pow
 
 - 📊 **Interactive Dashboard**: Visualize expenses with stacked column charts
 - 📁 **File Upload**: Upload ENBD Excel transaction files via web UI
-- 🤖 **AI Categorization**: Automatic transaction categorization using GPT-4o
+- 🤖 **AI Categorization**: Automatic transaction categorization using GPT-5.2
+- 💬 **AI Chat Assistant**: Ask questions about your spending, get financial advice
+- 🧠 **Multi-Chat with Memory**: Create multiple chat sessions, each with context
+- 📊 **Transaction Context**: Inject transaction data into chats for accurate answers
 - 🔍 **Smart Filtering**: Filter by date range, category, account, and merchant
 - 💾 **Deduplication**: Automatic detection and prevention of duplicate transactions
 - 📈 **Reports**: Weekly and monthly expense breakdowns
@@ -19,7 +22,7 @@ A modern web application for analyzing ENBD bank transaction exports with AI-pow
 - RESTful API with FastAPI
 - PostgreSQL database with SQLAlchemy ORM
 - Alembic for database migrations
-- OpenAI GPT-4o for intelligent categorization
+- OpenAI GPT-5.2 for intelligent categorization
 - Comprehensive test suite with Testcontainers
 
 ### Frontend (Coming Soon)
@@ -88,6 +91,14 @@ uv run pytest tests/ -v
 ### Statistics
 - `GET /api/stats/summary` - Summary statistics (income, expenses, net)
 
+### AI Chat
+- `POST /api/chat/sessions` - Create new chat session
+- `GET /api/chat/sessions` - List all chat sessions
+- `GET /api/chat/sessions/{id}` - Get chat with message history
+- `POST /api/chat/sessions/{id}/messages` - Send message to AI
+- `POST /api/chat/sessions/{id}/context` - Add transaction context to chat
+- `DELETE /api/chat/sessions/{id}` - Delete chat session
+
 ### Health
 - `GET /health` - Health check endpoint
 
@@ -103,7 +114,7 @@ DATABASE_URL=postgresql+psycopg://user:password@postgres:5432/enbd_analyzer_db
 
 # OpenAI API
 OPENAI_API_KEY=sk-your-api-key-here
-OPENAI_MODEL=gpt-4o  # Options: gpt-4o, gpt-5.2
+OPENAI_MODEL=gpt-5.2  # Options: gpt-4o, gpt-5.2
 ```
 
 ### Category Rules
@@ -209,6 +220,7 @@ docker-compose logs -f postgres
 - [ ] Frontend web application
 - [ ] Interactive charts and visualizations
 - [ ] Category management UI
+- [ ] AI Chat assistant with transaction context
 - [ ] Multi-user support
 
 ## License

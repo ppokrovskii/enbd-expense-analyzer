@@ -7,6 +7,7 @@ from datetime import date, datetime
 from app.database import get_db
 from app.models import Transaction
 from app.services.transaction_query_service import TransactionQueryService
+from app.dependencies import get_user_id
 from pydantic import BaseModel
 from decimal import Decimal
 
@@ -61,6 +62,7 @@ class ChartDataResponse(BaseModel):
 @router.get("/transactions", response_model=TransactionListResponse)
 def get_transactions(
     db: Session = Depends(get_db),
+    user_id: str = Depends(get_user_id),
     start_date: Optional[date] = Query(None, description="Filter by start date (inclusive)"),
     end_date: Optional[date] = Query(None, description="Filter by end date (inclusive)"),
     categories: Optional[List[str]] = Query(None, description="Filter by categories"),
@@ -79,6 +81,7 @@ def get_transactions(
     """
     transactions, total = TransactionQueryService.get_filtered_transactions(
         db=db,
+        user_id=user_id,
         start_date=start_date,
         end_date=end_date,
         categories=categories,
@@ -94,6 +97,7 @@ def get_transactions(
     # Calculate total amount for ALL filtered transactions (not just current page)
     all_transactions, _ = TransactionQueryService.get_filtered_transactions(
         db=db,
+        user_id=user_id,
         start_date=start_date,
         end_date=end_date,
         categories=categories,
@@ -120,6 +124,7 @@ def get_transactions(
 @router.get("/chart/weekly", response_model=ChartDataResponse)
 def get_weekly_chart_data(
     db: Session = Depends(get_db),
+    user_id: str = Depends(get_user_id),
     start_date: Optional[date] = Query(None, description="Filter by start date"),
     end_date: Optional[date] = Query(None, description="Filter by end date"),
     categories: Optional[List[str]] = Query(None, description="Filter by categories"),
@@ -134,6 +139,7 @@ def get_weekly_chart_data(
     """
     results = TransactionQueryService.get_weekly_aggregation(
         db=db,
+        user_id=user_id,
         start_date=start_date,
         end_date=end_date,
         categories=categories,
@@ -167,6 +173,7 @@ def get_weekly_chart_data(
 @router.get("/chart/monthly", response_model=ChartDataResponse)
 def get_monthly_chart_data(
     db: Session = Depends(get_db),
+    user_id: str = Depends(get_user_id),
     start_date: Optional[date] = Query(None, description="Filter by start date"),
     end_date: Optional[date] = Query(None, description="Filter by end date"),
     categories: Optional[List[str]] = Query(None, description="Filter by categories"),
@@ -181,6 +188,7 @@ def get_monthly_chart_data(
     """
     results = TransactionQueryService.get_monthly_aggregation(
         db=db,
+        user_id=user_id,
         start_date=start_date,
         end_date=end_date,
         categories=categories,
@@ -213,6 +221,7 @@ def get_monthly_chart_data(
 @router.get("/stats/summary")
 def get_summary_stats(
     db: Session = Depends(get_db),
+    user_id: str = Depends(get_user_id),
     start_date: Optional[date] = Query(None),
     end_date: Optional[date] = Query(None)
 ):
@@ -226,7 +235,7 @@ def get_summary_stats(
     Returns:
         Summary statistics including total income, expenses, and net
     """
-    query = db.query(Transaction)
+    query = db.query(Transaction).filter(Transaction.user_id == user_id)
     
     if start_date:
         query = query.filter(Transaction.date >= start_date)
@@ -255,7 +264,10 @@ def get_summary_stats(
 
 
 @router.get("/filters/options")
-def get_filter_options(db: Session = Depends(get_db)):
+def get_filter_options(
+    db: Session = Depends(get_db),
+    user_id: str = Depends(get_user_id)
+):
     """
     Get available filter options (categories, accounts, date range).
     
@@ -263,16 +275,21 @@ def get_filter_options(db: Session = Depends(get_db)):
         Dictionary with available categories, accounts, and date range
     """
     # Get unique categories (excluding None)
-    categories = db.query(Transaction.category).distinct().filter(Transaction.category.isnot(None)).order_by(Transaction.category).all()
+    categories = db.query(Transaction.category).filter(
+        Transaction.user_id == user_id,
+        Transaction.category.isnot(None)
+    ).distinct().order_by(Transaction.category).all()
     categories_list = [c[0] for c in categories]
     
     # Get unique accounts
-    accounts = db.query(Transaction.account).distinct().order_by(Transaction.account).all()
+    accounts = db.query(Transaction.account).filter(
+        Transaction.user_id == user_id
+    ).distinct().order_by(Transaction.account).all()
     accounts_list = [a[0] for a in accounts]
     
     # Get date range
-    min_date = db.query(func.min(Transaction.date)).scalar()
-    max_date = db.query(func.max(Transaction.date)).scalar()
+    min_date = db.query(func.min(Transaction.date)).filter(Transaction.user_id == user_id).scalar()
+    max_date = db.query(func.max(Transaction.date)).filter(Transaction.user_id == user_id).scalar()
     
     return {
         "categories": categories_list,
@@ -291,7 +308,8 @@ class UpdateTransactionCategoryRequest(BaseModel):
 def update_transaction_category(
     transaction_id: int,
     request: UpdateTransactionCategoryRequest,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    user_id: str = Depends(get_user_id)
 ):
     """
     Update the category of a specific transaction.
@@ -300,12 +318,16 @@ def update_transaction_category(
         transaction_id: The ID of the transaction to update
         request: The new category to assign
         db: Database session
+        user_id: User ID for access control
         
     Returns:
         The updated transaction
     """
-    # Find the transaction
-    transaction = db.query(Transaction).filter(Transaction.id == transaction_id).first()
+    # Find the transaction (ensuring user owns it)
+    transaction = db.query(Transaction).filter(
+        Transaction.id == transaction_id,
+        Transaction.user_id == user_id
+    ).first()
     
     if not transaction:
         raise HTTPException(status_code=404, detail="Transaction not found")

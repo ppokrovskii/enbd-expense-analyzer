@@ -1,7 +1,7 @@
 """Integration tests for Milestone 1: Backend foundation + database schema."""
 import pytest
 from sqlalchemy import text
-from app.models import Transaction, Category, LLMCache
+from app.models import Transaction, Category, Rule, LLMCache
 
 
 def test_database_connection(test_db):
@@ -46,13 +46,18 @@ def test_create_transaction(test_db):
     assert float(transaction.amount_signed) == -250.50
 
 
-def test_create_category(test_db):
-    """Test creating a category in the database."""
+def test_create_category_with_rules(test_db):
+    """Test creating a category and associated rules in the database.
+    
+    Note: In the new architecture, Category only stores name and color.
+    Keywords are stored in the separate Rule model.
+    """
     from datetime import datetime
     
+    # Create category first (without keywords)
     category = Category(
         name="Food & Dining",
-        keywords=["CARREFOUR", "LULU", "STARBUCKS"],
+        color="#4CAF50",
         created_at=datetime.utcnow(),
         updated_at=datetime.utcnow()
     )
@@ -63,8 +68,25 @@ def test_create_category(test_db):
     
     assert category.id is not None
     assert category.name == "Food & Dining"
-    assert len(category.keywords) == 3
-    assert "CARREFOUR" in category.keywords
+    
+    # Now create a rule with keywords linked to the category
+    rule = Rule(
+        category_id=category.id,
+        user_id='default_user',
+        keywords=["CARREFOUR", "LULU", "STARBUCKS"],
+        exclude_keywords=[],
+        priority=0,
+        created_at=datetime.utcnow()
+    )
+    
+    test_db.add(rule)
+    test_db.commit()
+    test_db.refresh(rule)
+    
+    assert rule.id is not None
+    assert rule.category_id == category.id
+    assert len(rule.keywords) == 3
+    assert "CARREFOUR" in rule.keywords
 
 
 def test_create_llm_cache(test_db):
@@ -122,23 +144,28 @@ def test_transaction_hash_unique_constraint(test_db):
 
 
 def test_category_name_unique_constraint(test_db):
-    """Test that category name must be unique."""
+    """Test that category name must be unique per user.
+    
+    Note: In the new architecture, uniqueness is per (user_id, name) combination.
+    """
     from datetime import datetime
     
     # Create first category
     category1 = Category(
+        user_id='default_user',
         name="Shopping",
-        keywords=["IKEA"],
+        color="#2196F3",
         created_at=datetime.utcnow(),
         updated_at=datetime.utcnow()
     )
     test_db.add(category1)
     test_db.commit()
     
-    # Try to create duplicate category
+    # Try to create duplicate category for same user
     category2 = Category(
+        user_id='default_user',
         name="Shopping",
-        keywords=["H&M"],
+        color="#F44336",
         created_at=datetime.utcnow(),
         updated_at=datetime.utcnow()
     )

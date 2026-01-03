@@ -50,6 +50,7 @@ export default function TransactionList({
   const [currentPage, setCurrentPage] = useState(1);
   const [sortBy, setSortBy] = useState<'date' | 'amount'>('date');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [categoryColors, setCategoryColors] = useState<Record<string, string>>({});
   
   // Load page size from localStorage, default to 20
   const [pageSize, setPageSize] = useState(() => {
@@ -59,6 +60,30 @@ export default function TransactionList({
     }
     return 20;
   });
+
+  // Fetch category colors on mount
+  useEffect(() => {
+    const fetchCategoryColors = async () => {
+      try {
+        const response = await fetch('http://localhost:8000/api/categories/', {
+          headers: { 'X-User-Id': 'default_user' },
+        });
+        if (response.ok) {
+          const categories = await response.json();
+          const colorMap: Record<string, string> = {};
+          categories.forEach((cat: { name: string; color?: string }) => {
+            if (cat.color) {
+              colorMap[cat.name] = cat.color;
+            }
+          });
+          setCategoryColors(colorMap);
+        }
+      } catch (error) {
+        console.error('Failed to fetch category colors:', error);
+      }
+    };
+    fetchCategoryColors();
+  }, []);
 
   // Reset to page 1 when filters, selected categories, or sorting changes
   useEffect(() => {
@@ -165,21 +190,27 @@ export default function TransactionList({
   };
 
   const getCategoryColor = (category: string) => {
-    const colors: Record<string, string> = {
-      "Groceries": "bg-purple-500/20 text-purple-300 border border-purple-500/30",
-      "Transport": "bg-cyan-500/20 text-cyan-300 border border-cyan-500/30",
-      "Food & Dining": "bg-pink-500/20 text-pink-300 border border-pink-500/30",
-      "Shopping": "bg-amber-500/20 text-amber-300 border border-amber-500/30",
-      "Entertainment": "bg-orange-500/20 text-orange-300 border border-orange-500/30",
-      "Utilities": "bg-indigo-500/20 text-indigo-300 border border-indigo-500/30",
-      "Technology Subscriptions": "bg-red-500/20 text-red-300 border border-red-500/30",
-      "Telecommunications": "bg-blue-500/20 text-blue-300 border border-blue-500/30",
-      "Healthcare": "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30",
-      "Salary": "bg-green-500/20 text-green-300 border border-green-500/30",
-      "Incoming Transfer": "bg-green-500/20 text-green-300 border border-green-500/30",
-      "Other": "bg-gray-500/20 text-gray-300 border border-gray-500/30",
-    };
-    return colors[category] || "bg-gray-500/20 text-gray-300 border border-gray-500/30";
+    // Use color from API if available
+    const color = categoryColors[category];
+    if (color) {
+      // Convert hex color to Tailwind-style classes
+      return `px-2.5 py-1 inline-flex text-label font-medium rounded-full border`;
+    }
+    
+    // Fallback to default gray for unknown categories
+    return "bg-gray-500/20 text-gray-300 border border-gray-500/30";
+  };
+  
+  const getCategoryStyle = (category: string): React.CSSProperties | undefined => {
+    const color = categoryColors[category];
+    if (color) {
+      return {
+        backgroundColor: `${color}33`, // 20% opacity
+        color: color,
+        borderColor: `${color}66`, // 40% opacity
+      };
+    }
+    return undefined;
   };
 
   if (loading && !data) {
@@ -364,7 +395,10 @@ export default function TransactionList({
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center gap-2">
-                      <span className={`px-2.5 py-1 inline-flex text-label font-medium rounded-full ${getCategoryColor(transaction.category)}`}>
+                      <span 
+                        className={getCategoryColor(transaction.category)}
+                        style={getCategoryStyle(transaction.category)}
+                      >
                         {transaction.category}
                       </span>
                       <button

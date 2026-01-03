@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Navigation from "./components/Navigation";
+import { NotificationManager } from "./components/NotificationManager";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -27,6 +28,9 @@ export default function RootLayout({
             <p>ENBD Expense Analyzer - Powered by AI</p>
           </footer>
         </div>
+        
+        {/* WebSocket-powered notification manager */}
+        <NotificationManager userId="default_user" />
       </body>
     </html>
   );

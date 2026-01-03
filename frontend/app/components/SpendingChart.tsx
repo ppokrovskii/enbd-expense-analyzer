@@ -53,7 +53,32 @@ export default function SpendingChart({
   const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false); // New state for subsequent loads
   const [error, setError] = useState<string | null>(null);
+  const [categoryColors, setCategoryColors] = useState<Record<string, string>>({});
   const fetchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Fetch category colors on mount
+  useEffect(() => {
+    const fetchCategoryColors = async () => {
+      try {
+        const response = await fetch('http://localhost:8000/api/categories/', {
+          headers: { 'X-User-Id': 'default_user' },
+        });
+        if (response.ok) {
+          const categories = await response.json();
+          const colorMap: Record<string, string> = {};
+          categories.forEach((cat: { name: string; color?: string }) => {
+            if (cat.color) {
+              colorMap[cat.name] = cat.color;
+            }
+          });
+          setCategoryColors(colorMap);
+        }
+      } catch (error) {
+        console.error('Failed to fetch category colors:', error);
+      }
+    };
+    fetchCategoryColors();
+  }, []);
 
   useEffect(() => {
     // Debounce rapid filter changes to prevent jumping
@@ -287,23 +312,19 @@ export default function SpendingChart({
     (a, b) => categorySortingTotals[b] - categorySortingTotals[a]
   );
 
-  // Category colors - assign unique colors to each category
+  // Category colors - fetch from API or use defaults
   const getCategoryColor = (category: string, isIncome: boolean = false): string => {
     if (isIncome) return "#34C759"; // Green for income
     
-    // Map each category to a unique color
+    // Use color from API if available
+    if (categoryColors[category]) {
+      return categoryColors[category];
+    }
+    
+    // Fallback color map for categories not yet in the system
     const colorMap: Record<string, string> = {
       "Other": "#64748B", // Gray for Other
-      "Groceries": "#8B5CF6", // Purple
-      "Shopping": "#F59E0B", // Amber/Yellow
-      "Transport": "#06B6D4", // Cyan/Teal
-      "Food & Dining": "#EC4899", // Pink
-      "Technology Subscriptions": "#EF4444", // Red
-      "Telecommunications": "#3B82F6", // Blue
-      "Healthcare": "#10B981", // Emerald
-      "Entertainment": "#F97316", // Orange
-      "Utilities": "#6366F1", // Indigo
-      "Transfer Between My Accounts": "#64748B", // Gray (same as Other since it's typically excluded)
+      "Transfer Between My Accounts": "#64748B", // Gray
       "Outgoing Transfer": "#94A3B8", // Light gray
       "Incoming Transfer": "#34C759", // Green (same as income)
     };

@@ -38,26 +38,31 @@ def mock_openai_client():
         yield client_instance
 
 
-def test_llm_service_initialization():
+def test_llm_service_initialization(test_db: Session, mock_openai_client):
     """Test LLM service can be initialized with API key."""
     with patch.dict('os.environ', {'OPENAI_API_KEY': 'test-key'}):
-        with patch('openai.OpenAI'):
-            service = LLMCategorizationService()
-            assert service.api_key == 'test-key'
-            assert service.model in ['gpt-4o', 'gpt-5.2']  # Default models
+        service = LLMCategorizationService(test_db)
+        assert service.api_key == 'test-key'
+        assert service.model in ['gpt-4o', 'gpt-5.2']  # Default models
 
 
-def test_llm_service_requires_api_key():
+def test_llm_service_requires_api_key(test_db: Session):
     """Test LLM service raises error if no API key."""
-    with patch.dict('os.environ', {}, clear=True):
+    # Clear OPENAI_API_KEY but keep other env vars
+    import os
+    orig_key = os.environ.pop('OPENAI_API_KEY', None)
+    try:
         with pytest.raises(ValueError, match="OpenAI API key not found"):
-            LLMCategorizationService()
+            LLMCategorizationService(test_db)
+    finally:
+        if orig_key:
+            os.environ['OPENAI_API_KEY'] = orig_key
 
 
-def test_categorize_with_llm(mock_openai_client):
+def test_categorize_with_llm(test_db: Session, mock_openai_client):
     """Test basic LLM categorization."""
     with patch.dict('os.environ', {'OPENAI_API_KEY': 'test-key'}):
-        service = LLMCategorizationService()
+        service = LLMCategorizationService(test_db)
         
         category = service.categorize_with_llm('CARREFOUR HYPERMARKET')
         assert category == 'Groceries'
@@ -69,7 +74,7 @@ def test_categorize_with_llm(mock_openai_client):
 def test_cache_category(test_db: Session, mock_openai_client):
     """Test caching mechanism."""
     with patch.dict('os.environ', {'OPENAI_API_KEY': 'test-key'}):
-        service = LLMCategorizationService()
+        service = LLMCategorizationService(test_db)
         
         # Cache a category
         service.cache_category('CARREFOUR', 'Groceries', test_db)
@@ -123,7 +128,7 @@ def test_categorize_uncategorized_transactions(test_db: Session, mock_openai_cli
         test_db.commit()
         
         # Run categorization
-        service = LLMCategorizationService()
+        service = LLMCategorizationService(test_db)
         stats = service.categorize_uncategorized_transactions(test_db)
         
         # Check stats
@@ -151,7 +156,7 @@ def test_categorize_uncategorized_transactions(test_db: Session, mock_openai_cli
 def test_categorize_uses_cache_on_second_run(test_db: Session, mock_openai_client):
     """Test that second run uses cache instead of calling LLM."""
     with patch.dict('os.environ', {'OPENAI_API_KEY': 'test-key'}):
-        service = LLMCategorizationService()
+        service = LLMCategorizationService(test_db)
         
         # Pre-populate cache
         service.cache_category('CARREFOUR', 'Groceries', test_db)

@@ -6,6 +6,7 @@ from typing import List, Optional
 from pydantic import BaseModel
 from datetime import datetime, timedelta
 from app.database import get_db
+from app.dependencies import get_user_id
 from app.models import Category, Transaction
 from app.services.category_service import CategoryService
 from app.services.llm_service import LLMCategorizationService
@@ -17,23 +18,23 @@ router = APIRouter(prefix="/api/categories", tags=["categories"])
 class CategoryCreate(BaseModel):
     """Request model for creating a category."""
     name: str
-    keywords: List[str]
-
-
-class CategoryUpdate(BaseModel):
-    """Request model for updating a category."""
-    name: Optional[str] = None
-    keywords: Optional[List[str]] = None
+    color: Optional[str] = None
 
 
 class CategoryResponse(BaseModel):
     """Response model for a category."""
     id: int
     name: str
-    keywords: List[str]
+    color: Optional[str] = None
     
     class Config:
         from_attributes = True
+
+
+class CategoryUpdate(BaseModel):
+    """Request model for updating a category."""
+    name: Optional[str] = None
+    color: Optional[str] = None
 
 
 class CategoryCreateResponse(BaseModel):
@@ -140,14 +141,14 @@ class AIBulkApplyRequest(BaseModel):
 
 
 @router.get("/", response_model=List[CategoryResponse])
-def list_categories(db: Session = Depends(get_db)):
+def list_categories(db: Session = Depends(get_db), user_id: str = Depends(get_user_id)):
     """
-    Get all categories.
+    Get all categories with their colors (no keywords - those are in rules now).
     
     Returns:
-        List of all categories with their keywords
+        List of all categories with id, name, color
     """
-    categories = db.query(Category).all()
+    categories = db.query(Category).filter(Category.user_id == user_id).all()
     return categories
 
 
@@ -353,36 +354,37 @@ def get_category(category_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/", response_model=CategoryCreateResponse, status_code=201)
-def create_category(category: CategoryCreate, db: Session = Depends(get_db)):
+def create_category(category: CategoryCreate, db: Session = Depends(get_db), user_id: str = Depends(get_user_id)):
     """
-    Create a new category and automatically apply rules to transactions.
+    Create a new category (name + color only, no keywords).
+    Keywords should be added via /api/rules/ endpoint.
     
     Args:
-        category: Category data (name and keywords)
+        category: Category data (name and color)
     
     Returns:
-        Created category and count of transactions affected
+        Created category
     """
     # Check if category with same name already exists
-    existing = db.query(Category).filter(Category.name == category.name).first()
+    existing = db.query(Category).filter(
+        Category.name == category.name,
+        Category.user_id == user_id
+    ).first()
     if existing:
         raise HTTPException(status_code=400, detail=f"Category '{category.name}' already exists")
     
     new_category = Category(
         name=category.name,
-        keywords=category.keywords
+        color=category.color,
+        user_id=user_id
     )
     db.add(new_category)
     db.commit()
     db.refresh(new_category)
     
-    # Auto-apply rules
-    category_service = CategoryService()
-    affected_count = category_service.categorize_transactions(db)
-    
     return CategoryCreateResponse(
         category=CategoryResponse.from_orm(new_category),
-        transactions_affected=affected_count
+        transactions_affected=0  # No auto-categorization without rules
     )
 
 
@@ -390,29 +392,32 @@ def create_category(category: CategoryCreate, db: Session = Depends(get_db)):
 def update_category(
     category_id: int,
     category_update: CategoryUpdate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    user_id: str = Depends(get_user_id)
 ):
     """
-    Update a category and automatically apply rules to transactions.
+    Update a category's name or color (keywords are managed via /api/rules/).
     
     Args:
         category_id: Category ID
-        category_update: Updated category data
+        category_update: Updated category data (name and/or color)
     
     Returns:
-        Updated category and count of transactions affected
+        Updated category
     """
-    category = db.query(Category).filter(Category.id == category_id).first()
+    category = db.query(Category).filter(
+        Category.id == category_id,
+        Category.user_id == user_id
+    ).first()
     if not category:
         raise HTTPException(status_code=404, detail="Category not found")
-    
-    keywords_changed = False
     
     # Update fields if provided
     if category_update.name is not None:
         # Check if new name conflicts with existing category
         existing = db.query(Category).filter(
             Category.name == category_update.name,
+            Category.user_id == user_id,
             Category.id != category_id
         ).first()
         if existing:
@@ -421,49 +426,47 @@ def update_category(
         # Update all transactions with old category name to new name
         old_name = category.name
         category.name = category_update.name
-        db.query(Transaction).filter(Transaction.category == old_name).update({
-            "category": category_update.name
-        })
+        db.query(Transaction).filter(
+            Transaction.category == old_name,
+            Transaction.user_id == user_id
+        ).update({"category": category_update.name})
     
-    if category_update.keywords is not None:
-        category.keywords = category_update.keywords
-        keywords_changed = True
+    if category_update.color is not None:
+        category.color = category_update.color
     
     db.commit()
     db.refresh(category)
     
-    # Auto-apply rules with force_recategorize_all if keywords changed
-    category_service = CategoryService()
-    affected_count = category_service.categorize_transactions(
-        db, 
-        force_recategorize_all=keywords_changed
-    )
-    
     return CategoryCreateResponse(
         category=CategoryResponse.from_orm(category),
-        transactions_affected=affected_count
+        transactions_affected=0
     )
 
 
 @router.delete("/{category_id}", status_code=204)
-def delete_category(category_id: int, db: Session = Depends(get_db)):
+def delete_category(category_id: int, db: Session = Depends(get_db), user_id: str = Depends(get_user_id)):
     """
-    Delete a category.
+    Delete a category and its associated rules.
     
     Args:
         category_id: Category ID
     
     Note:
-        Transactions with this category will be set to "Other"
+        Transactions with this category will be set to "Other".
+        Associated rules are automatically deleted due to CASCADE.
     """
-    category = db.query(Category).filter(Category.id == category_id).first()
+    category = db.query(Category).filter(
+        Category.id == category_id,
+        Category.user_id == user_id
+    ).first()
     if not category:
         raise HTTPException(status_code=404, detail="Category not found")
     
     # Update transactions to "Other" category
-    db.query(Transaction).filter(Transaction.category == category.name).update(
-        {"category": "Other"}
-    )
+    db.query(Transaction).filter(
+        Transaction.category == category.name,
+        Transaction.user_id == user_id
+    ).update({"category": "Other"})
     
     db.delete(category)
     db.commit()
@@ -1049,3 +1052,143 @@ def ai_bulk_apply(
     }
 
 
+# ============================================================================
+# LLM Rule Generation Endpoints (M5)
+# ============================================================================
+
+class GenerateRuleRequest(BaseModel):
+    """Request model for LLM rule generation."""
+    merchant: str
+    description: str
+    details: str
+    suggested_category: Optional[str] = None
+    context: Optional[str] = None
+
+
+class GenerateRuleResponse(BaseModel):
+    """Response model for LLM rule generation."""
+    category: str
+    keywords: List[str]
+    exclude_keywords: List[str]
+    confidence: float
+    reasoning: str
+    is_new_category: bool
+
+
+@router.post("/generate-rule", response_model=GenerateRuleResponse)
+async def generate_categorization_rule(
+    request: GenerateRuleRequest,
+    db: Session = Depends(get_db),
+    user_id: str = Query("default_user")
+):
+    """
+    Generate a categorization rule using LLM based on transaction details.
+    
+    This endpoint analyzes a transaction and uses AI to:
+    1. Suggest the best category
+    2. Extract relevant keywords
+    3. Identify exclusion patterns
+    4. Provide confidence score
+    
+    Args:
+        request: Transaction details and optional category hint
+        db: Database session
+        user_id: User ID
+        
+    Returns:
+        Generated rule with category, keywords, and confidence
+    """
+    from app.services.llm_rule_service import LLMRuleService
+    
+    try:
+        llm_service = LLMRuleService()
+        rule = await llm_service.generate_rule(
+            db=db,
+            user_id=user_id,
+            merchant=request.merchant,
+            description=request.description,
+            details=request.details,
+            suggested_category=request.suggested_category,
+            context=request.context
+        )
+        
+        return GenerateRuleResponse(**rule)
+        
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Rule generation failed: {str(e)}")
+
+
+class SuggestCategoryRequest(BaseModel):
+    """Request model for category suggestion."""
+    merchant: str
+    sample_transaction_ids: Optional[List[int]] = None
+
+
+class SuggestCategoryResponse(BaseModel):
+    """Response model for category suggestion."""
+    category: str
+    confidence: float
+    reasoning: str
+
+
+@router.post("/suggest-category", response_model=SuggestCategoryResponse)
+async def suggest_category_for_merchant(
+    request: SuggestCategoryRequest,
+    db: Session = Depends(get_db),
+    user_id: str = Query("default_user")
+):
+    """
+    Suggest a category for a merchant based on transaction history.
+    
+    Args:
+        request: Merchant name and optional sample transaction IDs
+        db: Database session
+        user_id: User ID
+        
+    Returns:
+        Category suggestion with confidence
+    """
+    from app.services.llm_rule_service import LLMRuleService
+    
+    try:
+        # Get sample transactions
+        if request.sample_transaction_ids:
+            transactions = db.query(Transaction).filter(
+                Transaction.id.in_(request.sample_transaction_ids),
+                Transaction.user_id == user_id
+            ).limit(5).all()
+        else:
+            transactions = db.query(Transaction).filter(
+                Transaction.merchant == request.merchant,
+                Transaction.user_id == user_id
+            ).limit(5).all()
+        
+        if not transactions:
+            raise HTTPException(status_code=404, detail="No transactions found for this merchant")
+        
+        # Convert to dicts
+        sample_dicts = [
+            {
+                'description': t.description,
+                'details': t.details,
+                'amount': float(t.amount) if t.amount else 0
+            }
+            for t in transactions
+        ]
+        
+        llm_service = LLMRuleService()
+        suggestion = await llm_service.suggest_category_for_merchant(
+            db=db,
+            user_id=user_id,
+            merchant=request.merchant,
+            sample_transactions=sample_dicts
+        )
+        
+        return SuggestCategoryResponse(**suggestion)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Category suggestion failed: {str(e)}")

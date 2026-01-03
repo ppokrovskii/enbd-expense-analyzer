@@ -4,9 +4,8 @@ import os
 from testcontainers.postgres import PostgresContainer
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from app.database import Base
+from app.shared.database import Base, get_db
 from app.main import app as fastapi_app
-from app.database import get_db
 
 
 # Ensure Docker client can connect (for both users)

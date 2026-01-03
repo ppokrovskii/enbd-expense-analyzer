@@ -339,6 +339,22 @@
     animation: transactionFadeOut 1.1s cubic-bezier(0.4, 0, 0.2, 1) forwards;
   }
   
+  /* Toast slide-up animation */
+  @keyframes slideUp {
+    0% {
+      opacity: 0;
+      transform: translateY(20px);
+    }
+    100% {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .animate-slide-up {
+    animation: slideUp 0.3s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  }
+  
   /* Gradient utilities */
   .gradient-primary {
     background: var(--gradient-primary);
