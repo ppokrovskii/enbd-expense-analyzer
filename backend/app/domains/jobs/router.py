@@ -56,6 +56,70 @@ def trigger_recategorization(db: Session = Depends(get_db), user_id: str = Depen
     return TriggerJobResponse(job_id=job_id, status="pending")
 
 
+class ApplyRulesRequest(BaseModel):
+    """Request body for applying specific rules."""
+    rule_ids: List[int]
+
+
+class ApplyRulesResponse(BaseModel):
+    """Response for rule application job."""
+    job_id: str
+    status: str
+    rule_count: int
+    message: str
+
+
+@router.post("/apply-rules", response_model=ApplyRulesResponse)
+def apply_rules(
+    request: ApplyRulesRequest,
+    sync: bool = False,
+    db: Session = Depends(get_db),
+    user_id: str = Depends(get_user_id)
+):
+    """
+    Apply specific rules to uncategorized transactions.
+    
+    This triggers a background job that:
+    1. Finds all "Other" or uncategorized transactions
+    2. Applies only the specified rules to matching transactions
+    3. Sends WebSocket notifications with progress and results
+    
+    Use this when applying newly created rules instead of full recategorization.
+    
+    Args:
+        sync: If True, run synchronously and return after completion. 
+              Default False (background job with WebSocket notifications).
+    
+    WebSocket notifications sent (when sync=False):
+    - job_progress: {type, job_id, progress, processed, total}
+    - job_complete: {type, job_id, result: {transactions_updated, by_category}}
+    """
+    if not request.rule_ids:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="At least one rule_id is required"
+        )
+    
+    job_id = JobService.create_rule_apply_job(db, user_id, request.rule_ids, run_sync=sync)
+    
+    # If sync, get the final status
+    if sync:
+        job = JobService.get_job_status(db, job_id)
+        return ApplyRulesResponse(
+            job_id=job_id,
+            status=job.status if job else "unknown",
+            rule_count=len(request.rule_ids),
+            message=f"Applied {len(request.rule_ids)} rule(s): {job.result.get('transactions_updated', 0)} transactions updated" if job and job.result else "Completed"
+        )
+    
+    return ApplyRulesResponse(
+        job_id=job_id,
+        status="pending",
+        rule_count=len(request.rule_ids),
+        message=f"Started applying {len(request.rule_ids)} rule(s) to uncategorized transactions"
+    )
+
+
 @router.get("/{job_id}", response_model=JobResponse)
 def get_job_status(job_id: str, db: Session = Depends(get_db), user_id: str = Depends(get_user_id)):
     """Get the current status of a background job."""

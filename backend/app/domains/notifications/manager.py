@@ -71,6 +71,50 @@ class ConnectionManager:
         for conn in dead_connections:
             self.disconnect(conn, user_id)
     
+    async def send_rules_applied(self, user_id: str, job_id: str, transactions_updated: int, by_category: dict):
+        """
+        Send rule application result notification - optimized for toaster display.
+        
+        Example message:
+        {
+            "type": "rules_applied",
+            "job_id": "...",
+            "transactions_updated": 15,
+            "by_category": {"Groceries": 10, "Transport": 5},
+            "toast_message": "Categorized 15 transactions (Groceries: 10, Transport: 5)"
+        }
+        """
+        if user_id not in self.active_connections:
+            return
+        
+        # Build toast-friendly message
+        if transactions_updated == 0:
+            toast_message = "No transactions matched the applied rules"
+        elif by_category:
+            details = ", ".join([f"{cat}: {count}" for cat, count in by_category.items()])
+            toast_message = f"Categorized {transactions_updated} transactions ({details})"
+        else:
+            toast_message = f"Categorized {transactions_updated} transactions"
+        
+        message = {
+            "type": "rules_applied",
+            "job_id": job_id,
+            "transactions_updated": transactions_updated,
+            "by_category": by_category,
+            "toast_message": toast_message
+        }
+        
+        dead_connections = []
+        for connection in self.active_connections[user_id]:
+            try:
+                await connection.send_json(message)
+            except Exception as e:
+                print(f"Error sending to WebSocket: {e}")
+                dead_connections.append(connection)
+        
+        for conn in dead_connections:
+            self.disconnect(conn, user_id)
+    
     async def send_job_failed(self, user_id: str, job_id: str, error: str):
         """Send job failure notification to all connections for a user."""
         if user_id not in self.active_connections:

@@ -17,6 +17,7 @@ class BackgroundJob(Base):
     processed_items = Column(Integer, default=0)
     total_items = Column(Integer, nullable=True)
     result = Column(JSON, nullable=True)
+    job_params = Column(JSON, nullable=True)  # Job-specific parameters (e.g., rule_ids)
     error = Column(String(500), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     started_at = Column(DateTime, nullable=True)
