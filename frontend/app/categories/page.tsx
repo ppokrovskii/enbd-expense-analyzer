@@ -115,7 +115,7 @@ export default function CategoriesPage() {
   };
 
   const selectedCategory = selectedCategoryIds.length === 1 
-    ? categories.find(c => c.id === selectedCategoryIds[0]) 
+    ? categories.find(c => c.id === selectedCategoryIds[0]) ?? null
     : null;
 
   if (loading) {

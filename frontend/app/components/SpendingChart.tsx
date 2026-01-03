@@ -461,7 +461,7 @@ export default function SpendingChart({
             onClick={(data) => {
               // Handle click on chart bar
               if (data && data.activeLabel && onPeriodClick) {
-                onPeriodClick(data.activeLabel);
+                onPeriodClick(String(data.activeLabel));
               }
             }}
           >
@@ -636,7 +636,7 @@ export default function SpendingChart({
                   >
                     <div
                       className="w-3 h-3 rounded-full flex-shrink-0 ring-2 ring-offset-2 ring-offset-[var(--color-bg-primary)]"
-                      style={{ backgroundColor: color, ringColor: isVisible ? `${color}40` : 'transparent' }}
+                      style={{ backgroundColor: color, ['--tw-ring-color' as string]: isVisible ? `${color}40` : 'transparent' } as React.CSSProperties}
                     />
                     <p className="text-body text-[var(--color-text-primary)] truncate">
                       {category}

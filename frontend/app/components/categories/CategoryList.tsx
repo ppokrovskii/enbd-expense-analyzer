@@ -297,7 +297,7 @@ export default function CategoryList({
         onClose={() => setShowAIModal(false)}
         level="global"
         days={statsWindow}
-        availableCategories={categories.map((c) => c.name)}
+        allCategories={categories}
         onSuccess={onCategoryUpdate}
       />
     </div>

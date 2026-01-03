@@ -1,6 +1,8 @@
 "use client";
 
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Category } from "../../categories/page";
+import { API_BASE_URL } from "../../constants/api";
 
 interface RulesFilterProps {
   selectedCategory: Category | null;
@@ -12,6 +14,25 @@ interface RulesFilterProps {
   searchQuery: string;
 }
 
+interface RuleWithCategory {
+  id: number;
+  category_id: number;
+  category_name: string;
+  keywords: string[];
+  exclude_keywords: string[];
+  priority: number;
+}
+
+interface PaginatedRulesResponse {
+  items: RuleWithCategory[];
+  total: number;
+  offset: number;
+  limit: number;
+  has_more: boolean;
+}
+
+const RULES_PAGE_SIZE = 20;
+
 export default function RulesFilter({
   selectedCategory,
   selectedRuleIndex,
@@ -21,12 +42,91 @@ export default function RulesFilter({
   categories,
   searchQuery,
 }: RulesFilterProps) {
-  // Determine which categories to show rules from
-  const categoriesToShow = selectedCategoryIds.length === 0
-    ? categories // Show all categories if none selected
-    : categories.filter(c => selectedCategoryIds.includes(c.id));
+  // State for paginated rules (when no category is selected)
+  const [allRules, setAllRules] = useState<RuleWithCategory[]>([]);
+  const [totalRules, setTotalRules] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [offset, setOffset] = useState(0);
+  
+  const containerRef = useRef<HTMLDivElement>(null);
+  const loadingRef = useRef(false);
 
-  // Filter rules by search query
+  // Fetch rules from API with pagination
+  const fetchRules = useCallback(async (currentOffset: number, append: boolean = false) => {
+    if (loadingRef.current) return;
+    
+    loadingRef.current = true;
+    if (append) {
+      setLoadingMore(true);
+    } else {
+      setLoading(true);
+    }
+
+    try {
+      const params = new URLSearchParams({
+        offset: currentOffset.toString(),
+        limit: RULES_PAGE_SIZE.toString(),
+      });
+      
+      if (searchQuery) {
+        params.append('search', searchQuery);
+      }
+
+      const response = await fetch(`${API_BASE_URL}/rules/?${params}`);
+      if (!response.ok) throw new Error('Failed to fetch rules');
+      
+      const data: PaginatedRulesResponse = await response.json();
+      
+      if (append) {
+        setAllRules(prev => [...prev, ...data.items]);
+      } else {
+        setAllRules(data.items);
+      }
+      
+      setTotalRules(data.total);
+      setHasMore(data.has_more);
+      setOffset(currentOffset + data.items.length);
+    } catch (err) {
+      console.error('Failed to fetch rules:', err);
+    } finally {
+      setLoading(false);
+      setLoadingMore(false);
+      loadingRef.current = false;
+    }
+  }, [searchQuery]);
+
+  // Reset and fetch when search query changes or when switching to "all rules" view
+  useEffect(() => {
+    if (!selectedCategory && selectedCategoryIds.length === 0) {
+      setOffset(0);
+      setAllRules([]);
+      fetchRules(0, false);
+    }
+  }, [selectedCategory, selectedCategoryIds.length, searchQuery, fetchRules]);
+
+  // Load more rules on scroll
+  const handleScroll = useCallback(() => {
+    if (!containerRef.current || !hasMore || loadingRef.current) return;
+    
+    const { scrollTop, scrollHeight, clientHeight } = containerRef.current;
+    // Load more when scrolled to 80% of the container
+    if (scrollTop + clientHeight >= scrollHeight * 0.8) {
+      fetchRules(offset, true);
+    }
+  }, [hasMore, offset, fetchRules]);
+
+  // Attach scroll listener
+  useEffect(() => {
+    const container = containerRef.current;
+    if (container && !selectedCategory && selectedCategoryIds.length === 0) {
+      container.addEventListener('scroll', handleScroll);
+      return () => container.removeEventListener('scroll', handleScroll);
+    }
+  }, [handleScroll, selectedCategory, selectedCategoryIds.length]);
+
+  // Filter rules by search query (for single category view)
   const filterRulesBySearch = (rules: string[]) => {
     if (!searchQuery) return rules;
     const query = searchQuery.toLowerCase();
@@ -35,8 +135,8 @@ export default function RulesFilter({
 
   // If single category selected, show its rules as filters
   if (selectedCategory) {
-    const allRules = selectedCategory.keywords || [];
-    const rules = filterRulesBySearch(allRules);
+    const allCategoryRules = selectedCategory.keywords || [];
+    const rules = filterRulesBySearch(allCategoryRules);
 
     return (
       <div className="p-4">
@@ -48,9 +148,9 @@ export default function RulesFilter({
                 (1 selected)
               </span>
             )}
-            {searchQuery && rules.length < allRules.length && (
+            {searchQuery && rules.length < allCategoryRules.length && (
               <span className="ml-2 text-caption text-[var(--color-text-secondary)]">
-                ({rules.length} of {allRules.length})
+                ({rules.length} of {allCategoryRules.length})
               </span>
             )}
           </h3>
@@ -131,83 +231,100 @@ export default function RulesFilter({
     );
   }
 
-  // Multiple or no categories selected - show all rules from those categories
-  const allCategoriesToShow = categoriesToShow.map(cat => ({
-    ...cat,
-    filteredKeywords: filterRulesBySearch(cat.keywords || [])
-  }));
-  
-  const totalRules = allCategoriesToShow.reduce((sum, cat) => sum + cat.filteredKeywords.length, 0);
-  const totalAllRules = categoriesToShow.reduce((sum, cat) => sum + (cat.keywords?.length || 0), 0);
-
+  // No category selected - show all rules with infinite scroll
   return (
-    <div className="p-4">
+    <div ref={containerRef} className="p-4 h-full overflow-y-auto">
       <div className="mb-4">
         <h3 className="text-body font-semibold text-[var(--color-text-primary)] mb-1">
-          Rules
-          {searchQuery && totalRules < totalAllRules && (
+          All Rules
+          {!loading && (
             <span className="ml-2 text-caption text-[var(--color-text-secondary)]">
-              ({totalRules} of {totalAllRules})
+              ({totalRules} total)
             </span>
           )}
         </h3>
         <p className="text-caption text-[var(--color-text-secondary)]">
-          {selectedCategoryIds.length === 0
-            ? `${totalRules} rules from all categories`
-            : `${totalRules} rules from ${selectedCategoryIds.length} ${selectedCategoryIds.length === 1 ? 'category' : 'categories'}`}
+          {searchQuery 
+            ? `Showing rules matching "${searchQuery}"`
+            : 'Showing all rules from all categories'}
         </p>
       </div>
 
-      {totalRules === 0 ? (
+      {loading ? (
+        <div className="flex items-center justify-center py-8">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[var(--color-primary)]"></div>
+        </div>
+      ) : allRules.length === 0 ? (
         <div className="card p-6 text-center">
           <p className="text-caption text-[var(--color-text-secondary)]">
-            {searchQuery ? 'No rules match your search' : 'No rules in selected categories'}
+            {searchQuery ? 'No rules match your search' : 'No rules defined yet'}
           </p>
         </div>
       ) : (
-        <div className="space-y-4">
-          {allCategoriesToShow.map((category) => {
-            const rules = category.filteredKeywords;
-            if (rules.length === 0) return null;
+        <>
+          <div className="space-y-2">
+            {allRules.map((rule) => {
+              // Display all keywords in the rule
+              const keywordsDisplay = rule.keywords.join(', ');
+              const patternType = getPatternTypeForKeywords(rule.keywords);
 
-            return (
-              <div key={category.id}>
-                <h4 className="text-caption font-semibold text-[var(--color-text-primary)] mb-2">
-                  {category.name}
-                </h4>
-                <div className="space-y-2">
-                  {rules.map((rule, index) => {
-                    const patternType = getPatternType(rule);
-
-                    return (
-                      <div
-                        key={`${category.id}-${index}`}
-                        className="p-3 rounded-lg bg-[var(--color-bg-tertiary)] text-left"
-                      >
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="text-body font-medium text-[var(--color-text-primary)] truncate flex-1">
-                            {rule}
-                          </span>
-                        </div>
-                        <span
-                          className={`inline-flex items-center px-2 py-0.5 rounded text-caption font-medium ${getPatternTypeBadgeClass(
-                            patternType
-                          )}`}
-                        >
-                          {patternType}
-                        </span>
-                      </div>
-                    );
-                  })}
+              return (
+                <div
+                  key={rule.id}
+                  className="p-3 rounded-lg bg-[var(--color-bg-tertiary)] text-left"
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-body font-medium text-[var(--color-text-primary)] truncate flex-1">
+                      {keywordsDisplay}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`inline-flex items-center px-2 py-0.5 rounded text-caption font-medium ${getPatternTypeBadgeClass(
+                        patternType
+                      )}`}
+                    >
+                      {patternType}
+                    </span>
+                    <span className="text-caption text-[var(--color-text-secondary)]">
+                      → {rule.category_name}
+                    </span>
+                  </div>
                 </div>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
+          
+          {/* Loading more indicator */}
+          {loadingMore && (
+            <div className="flex items-center justify-center py-4">
+              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-[var(--color-primary)]"></div>
+            </div>
+          )}
+          
+          {/* Load more button as fallback */}
+          {hasMore && !loadingMore && (
+            <div className="mt-4">
+              <button
+                onClick={() => fetchRules(offset, true)}
+                className="w-full btn btn-secondary py-2 text-caption"
+              >
+                Load More ({totalRules - offset} remaining)
+              </button>
+            </div>
+          )}
+          
+          {/* End of list indicator */}
+          {!hasMore && allRules.length > 0 && (
+            <p className="mt-4 text-caption text-[var(--color-text-secondary)] text-center">
+              All {totalRules} rules loaded
+            </p>
+          )}
+        </>
       )}
 
       <p className="mt-4 text-caption text-[var(--color-text-secondary)] text-center">
-        Select a single category to filter by specific rules
+        Select a category to filter and manage specific rules
       </p>
     </div>
   );
@@ -217,6 +334,13 @@ function getPatternType(pattern: string): "Keyword" | "Keyword OR" | "Regex" {
   if (pattern.includes("|")) return "Keyword OR";
   if (/[\\^$.*+?()[\]{}]/.test(pattern)) return "Regex";
   return "Keyword";
+}
+
+function getPatternTypeForKeywords(keywords: string[]): "Keyword" | "Keyword OR" | "Regex" {
+  // Check the first keyword to determine the type
+  if (keywords.length === 0) return "Keyword";
+  const firstKeyword = keywords[0];
+  return getPatternType(firstKeyword);
 }
 
 function getPatternTypeBadgeClass(patternType: string): string {
@@ -231,4 +355,3 @@ function getPatternTypeBadgeClass(patternType: string): string {
       return "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-300";
   }
 }
-
