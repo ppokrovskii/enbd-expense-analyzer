@@ -15,7 +15,8 @@ interface MerchantsGridProps {
   selectedCategoryIds: number[];
   selectedCategory: Category | null;
   selectedRuleIndex: number | null;
-  statsWindow: 30 | 60 | 90;
+  startDate: string;
+  endDate: string;
   searchQuery: string;
   categories: Category[];
   onCategoryUpdate: () => void;
@@ -28,7 +29,8 @@ export default function MerchantsGrid({
   selectedCategoryIds,
   selectedCategory,
   selectedRuleIndex,
-  statsWindow,
+  startDate,
+  endDate,
   searchQuery,
   categories,
   onCategoryUpdate,
@@ -43,24 +45,25 @@ export default function MerchantsGrid({
   useEffect(() => {
     fetchMerchants();
     onSelectedMerchantsChange(new Set()); // Clear selection when filters change
-  }, [selectedCategoryIds, selectedCategory, selectedRuleIndex, statsWindow, refreshTrigger]);
+  }, [selectedCategoryIds, selectedCategory, selectedRuleIndex, startDate, endDate, refreshTrigger]);
 
   const fetchMerchants = async () => {
     setLoading(true);
     try {
       let url: string;
+      const dateParams = `start_date=${startDate}&end_date=${endDate}`;
 
       // If single category and specific rule selected
       if (selectedCategory && selectedRuleIndex !== null) {
-        url = `http://localhost:8000/api/categories/${selectedCategory.id}/rules/${selectedRuleIndex}/merchants?days=${statsWindow}`;
+        url = `http://localhost:8000/api/categories/${selectedCategory.id}/rules/${selectedRuleIndex}/merchants?${dateParams}`;
       }
       // If single category selected (no specific rule)
       else if (selectedCategory) {
-        url = `http://localhost:8000/api/categories/${selectedCategory.id}/all-rule-merchants?days=${statsWindow}`;
+        url = `http://localhost:8000/api/categories/${selectedCategory.id}/all-rule-merchants?${dateParams}`;
       }
       // Default: show all merchants
       else {
-        url = `http://localhost:8000/api/categories/all-merchants?days=${statsWindow}`;
+        url = `http://localhost:8000/api/categories/all-merchants?${dateParams}`;
       }
 
       const response = await fetch(url);
@@ -85,10 +88,6 @@ export default function MerchantsGrid({
   };
 
   const handleViewTransactions = (merchant: string) => {
-    const endDate = new Date().toISOString().split("T")[0];
-    const startDate = new Date(Date.now() - statsWindow * 24 * 60 * 60 * 1000)
-      .toISOString()
-      .split("T")[0];
     router.push(
       `/transactions?startDate=${startDate}&endDate=${endDate}&merchant=${encodeURIComponent(
         merchant

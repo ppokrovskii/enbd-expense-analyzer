@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 from typing import List, Optional
 from pydantic import BaseModel
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from app.database import get_db
 from app.dependencies import get_user_id
 from app.models import Category, Transaction
@@ -177,12 +177,25 @@ def get_category_stats(db: Session = Depends(get_db)):
 
 @router.get("/all-merchants")
 def get_all_merchants(
-    days: int = Query(30, ge=1, le=90),
+    days: int = Query(None, ge=1, le=365, description="Time window in days (deprecated, use start_date/end_date)"),
+    start_date: Optional[date] = Query(None, description="Start date for filtering"),
+    end_date: Optional[date] = Query(None, description="End date for filtering"),
     db: Session = Depends(get_db)
 ):
     """Get all merchants across all categories with their category information."""
-    from datetime import datetime, timedelta
-    cutoff_date = datetime.now().date() - timedelta(days=days)
+    from datetime import datetime as dt, timedelta
+    
+    # Determine date range
+    if start_date and end_date:
+        date_start = start_date
+        date_end = end_date
+    elif days:
+        date_end = dt.now().date()
+        date_start = date_end - timedelta(days=days)
+    else:
+        # Default to last 30 days
+        date_end = dt.now().date()
+        date_start = date_end - timedelta(days=30)
     
     # Query all merchants with their category
     merchants = db.query(
@@ -191,7 +204,8 @@ def get_all_merchants(
         func.count(Transaction.id).label('transaction_count'),
         func.sum(func.abs(Transaction.amount_signed)).label('total_amount')
     ).filter(
-        Transaction.date >= cutoff_date
+        Transaction.date >= date_start,
+        Transaction.date <= date_end
     ).group_by(
         Transaction.merchant,
         Transaction.category
@@ -705,7 +719,9 @@ def get_category_detailed_stats(
 def get_rule_merchants(
     category_id: int,
     rule_index: int,
-    days: int = Query(30, ge=7, le=90, description="Time window in days"),
+    days: int = Query(None, ge=7, le=365, description="Time window in days (deprecated, use start_date/end_date)"),
+    start_date: Optional[date] = Query(None, description="Start date for filtering"),
+    end_date: Optional[date] = Query(None, description="End date for filtering"),
     db: Session = Depends(get_db)
 ):
     """
@@ -714,7 +730,9 @@ def get_rule_merchants(
     Args:
         category_id: Category ID
         rule_index: Index of the rule in the keywords array
-        days: Time window in days (7-90)
+        start_date: Start date for filtering
+        end_date: End date for filtering
+        days: Time window in days (deprecated)
     
     Returns:
         List of merchants matched by this rule, grouped and sorted by volume
@@ -727,13 +745,24 @@ def get_rule_merchants(
         raise HTTPException(status_code=404, detail="Rule not found")
     
     rule_pattern = category.keywords[rule_index]
-    date_threshold = datetime.now().date() - timedelta(days=days)
+    
+    # Determine date range
+    if start_date and end_date:
+        date_start = start_date
+        date_end = end_date
+    elif days:
+        date_end = datetime.now().date()
+        date_start = date_end - timedelta(days=days)
+    else:
+        date_end = datetime.now().date()
+        date_start = date_end - timedelta(days=30)
     
     # Find transactions that match this specific rule pattern
     # Get transactions for this category and check which ones match the pattern
     transactions = db.query(Transaction).filter(
         Transaction.category == category.name,
-        Transaction.date >= date_threshold
+        Transaction.date >= date_start,
+        Transaction.date <= date_end
     ).all()
     
     # Filter transactions by rule pattern (case-insensitive substring match)
@@ -771,7 +800,9 @@ def get_rule_merchants(
 @router.get("/{category_id}/all-rule-merchants", response_model=List[RuleMerchantGroup])
 def get_category_all_merchants(
     category_id: int,
-    days: int = Query(30, ge=7, le=90, description="Time window in days"),
+    days: int = Query(None, ge=7, le=365, description="Time window in days (deprecated, use start_date/end_date)"),
+    start_date: Optional[date] = Query(None, description="Start date for filtering"),
+    end_date: Optional[date] = Query(None, description="End date for filtering"),
     db: Session = Depends(get_db)
 ):
     """
@@ -779,7 +810,9 @@ def get_category_all_merchants(
     
     Args:
         category_id: Category ID
-        days: Time window in days (7-90)
+        start_date: Start date for filtering
+        end_date: End date for filtering
+        days: Time window in days (deprecated)
     
     Returns:
         List of all merchants in this category, grouped and sorted by volume
@@ -789,7 +822,16 @@ def get_category_all_merchants(
     if not category:
         raise HTTPException(status_code=404, detail="Category not found")
     
-    date_threshold = datetime.now().date() - timedelta(days=days)
+    # Determine date range
+    if start_date and end_date:
+        date_start = start_date
+        date_end = end_date
+    elif days:
+        date_end = datetime.now().date()
+        date_start = date_end - timedelta(days=days)
+    else:
+        date_end = datetime.now().date()
+        date_start = date_end - timedelta(days=30)
     
     # Query all transactions in this category within time window
     results = db.query(
@@ -798,7 +840,8 @@ def get_category_all_merchants(
         func.sum(func.abs(Transaction.amount_signed)).label('total_amount')
     ).filter(
         Transaction.category == category.name,
-        Transaction.date >= date_threshold
+        Transaction.date >= date_start,
+        Transaction.date <= date_end
     ).group_by(
         Transaction.merchant
     ).order_by(

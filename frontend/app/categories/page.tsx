@@ -24,6 +24,11 @@ export interface CategoryDetailedStats {
   days: number;
 }
 
+interface DateFilters {
+  startDate: string;
+  endDate: string;
+}
+
 export default function CategoriesPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -31,12 +36,23 @@ export default function CategoriesPage() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [selectedCategoryIds, setSelectedCategoryIds] = useState<number[]>([]);
   const [selectedRuleIndex, setSelectedRuleIndex] = useState<number | null>(null);
-  const [statsWindow, setStatsWindow] = useState<30 | 60 | 90>(30);
   const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [selectedMerchants, setSelectedMerchants] = useState<Set<string>>(new Set());
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [isRecategorizing, setIsRecategorizing] = useState(false);
+  
+  // Date filter state
+  const [dateFilters, setDateFilters] = useState<DateFilters>(() => {
+    // Default to last 30 days
+    const endDate = new Date();
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - 30);
+    return {
+      startDate: startDate.toISOString().split('T')[0],
+      endDate: endDate.toISOString().split('T')[0]
+    };
+  });
 
   useEffect(() => {
     fetchCategories();
@@ -74,7 +90,8 @@ export default function CategoriesPage() {
     
     // Store merchant list in sessionStorage to pass to AI suggestions page
     sessionStorage.setItem('ai_categorize_merchants', JSON.stringify(Array.from(selectedMerchants)));
-    sessionStorage.setItem('ai_categorize_days', statsWindow.toString());
+    sessionStorage.setItem('ai_categorize_start_date', dateFilters.startDate);
+    sessionStorage.setItem('ai_categorize_end_date', dateFilters.endDate);
     
     // Navigate to AI suggestions page
     router.push('/categories/ai-suggestions');
@@ -114,6 +131,134 @@ export default function CategoriesPage() {
     }
   };
 
+  // Quick filter handlers
+  const handleQuickFilter = (filterType: string) => {
+    const now = new Date();
+    let startYear: number, startMonth: number, startDay: number;
+    let endYear: number, endMonth: number, endDay: number;
+
+    switch (filterType) {
+      case 'this-month':
+        startYear = now.getFullYear();
+        startMonth = now.getMonth() + 1;
+        startDay = 1;
+        endYear = now.getFullYear();
+        endMonth = now.getMonth() + 1;
+        endDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+        break;
+      
+      case 'last-month':
+        const lastMonth = now.getMonth() === 0 ? 11 : now.getMonth() - 1;
+        const lastMonthYear = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
+        startYear = lastMonthYear;
+        startMonth = lastMonth + 1;
+        startDay = 1;
+        endYear = lastMonthYear;
+        endMonth = lastMonth + 1;
+        endDay = new Date(lastMonthYear, lastMonth + 1, 0).getDate();
+        break;
+      
+      case 'two-months-ago':
+        const twoMonthsAgo = (now.getMonth() - 2 + 12) % 12;
+        const twoMonthsAgoYear = now.getMonth() < 2 ? now.getFullYear() - 1 : now.getFullYear();
+        startYear = twoMonthsAgoYear;
+        startMonth = twoMonthsAgo + 1;
+        startDay = 1;
+        endYear = twoMonthsAgoYear;
+        endMonth = twoMonthsAgo + 1;
+        endDay = new Date(twoMonthsAgoYear, twoMonthsAgo + 1, 0).getDate();
+        break;
+      
+      case 'last-3-months':
+        const threeMonthsAgo = (now.getMonth() - 3 + 12) % 12;
+        const threeMonthsAgoYear = now.getMonth() < 3 ? now.getFullYear() - 1 : now.getFullYear();
+        startYear = threeMonthsAgoYear;
+        startMonth = threeMonthsAgo + 1;
+        startDay = 1;
+        endYear = now.getFullYear();
+        endMonth = now.getMonth() + 1;
+        endDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+        break;
+      
+      case 'this-year':
+        startYear = now.getFullYear();
+        startMonth = 1;
+        startDay = 1;
+        endYear = now.getFullYear();
+        endMonth = 12;
+        endDay = 31;
+        break;
+      
+      case 'last-year':
+        startYear = now.getFullYear() - 1;
+        startMonth = 1;
+        startDay = 1;
+        endYear = now.getFullYear() - 1;
+        endMonth = 12;
+        endDay = 31;
+        break;
+      
+      case 'last-7-days': {
+        const sevenDaysAgo = new Date(now);
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+        startYear = sevenDaysAgo.getFullYear();
+        startMonth = sevenDaysAgo.getMonth() + 1;
+        startDay = sevenDaysAgo.getDate();
+        endYear = now.getFullYear();
+        endMonth = now.getMonth() + 1;
+        endDay = now.getDate();
+        break;
+      }
+      
+      case 'last-30-days': {
+        const thirtyDaysAgo = new Date(now);
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+        startYear = thirtyDaysAgo.getFullYear();
+        startMonth = thirtyDaysAgo.getMonth() + 1;
+        startDay = thirtyDaysAgo.getDate();
+        endYear = now.getFullYear();
+        endMonth = now.getMonth() + 1;
+        endDay = now.getDate();
+        break;
+      }
+      
+      default:
+        return;
+    }
+
+    setDateFilters({
+      startDate: `${startYear}-${String(startMonth).padStart(2, '0')}-${String(startDay).padStart(2, '0')}`,
+      endDate: `${endYear}-${String(endMonth).padStart(2, '0')}-${String(endDay).padStart(2, '0')}`
+    });
+  };
+
+  const getQuickFilterLabel = (filterType: string): string => {
+    const now = new Date();
+    const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'];
+    
+    switch (filterType) {
+      case 'this-month':
+        return monthNames[now.getMonth()];
+      case 'last-month':
+        return monthNames[(now.getMonth() - 1 + 12) % 12];
+      case 'two-months-ago':
+        return monthNames[(now.getMonth() - 2 + 12) % 12];
+      default:
+        return filterType;
+    }
+  };
+
+  const handleClearDateFilters = () => {
+    const endDate = new Date();
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - 30);
+    setDateFilters({
+      startDate: startDate.toISOString().split('T')[0],
+      endDate: endDate.toISOString().split('T')[0]
+    });
+  };
+
   const selectedCategory = selectedCategoryIds.length === 1 
     ? categories.find(c => c.id === selectedCategoryIds[0]) ?? null
     : null;
@@ -128,44 +273,135 @@ export default function CategoriesPage() {
 
   return (
     <div className="h-screen flex flex-col">
-      {/* Header with Title and Time Window */}
-      <div className="border-b border-[var(--color-border)] bg-[var(--color-bg-primary)]">
-        <div className="px-6 py-4">
-          <div className="flex items-center justify-between mb-4">
-            <h1 className="text-heading text-[var(--color-text-primary)]">Category Management</h1>
-            <div className="flex gap-2">
-              {([30, 60, 90] as const).map((days) => (
-                <button
-                  key={days}
-                  onClick={() => setStatsWindow(days)}
-                  className={`py-2 px-4 text-body rounded-lg transition-apple ${
-                    statsWindow === days
-                      ? "bg-[var(--color-primary)] text-white"
-                      : "bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-secondary)]"
-                  }`}
-                >
-                  {days} days
-                </button>
-              ))}
+      {/* Page Title - Same style as transactions page */}
+      <div className="px-6 pt-6 pb-4 bg-[var(--color-bg-primary)]">
+        <h1 className="text-title text-[var(--color-text-primary)]">Category Management</h1>
+        <p className="text-body text-[var(--color-text-secondary)] mt-1">
+          Manage categorization rules and organize merchants by category
+        </p>
+      </div>
+
+      {/* Quick Filters Card - Same style as transactions page */}
+      <div className="px-6 pb-4">
+        <div className="card p-6 space-y-4">
+          {/* Quick Date Filters */}
+          <div>
+            <label className="block text-caption text-[var(--color-text-secondary)] mb-2">
+              Quick Filters
+            </label>
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => handleQuickFilter('this-month')}
+                className="px-3 py-1.5 text-caption rounded-lg bg-[var(--color-bg-tertiary)] text-[var(--color-text-primary)] hover:bg-[var(--color-primary)] hover:text-white transition-apple"
+              >
+                {getQuickFilterLabel('this-month')}
+              </button>
+              <button
+                onClick={() => handleQuickFilter('last-month')}
+                className="px-3 py-1.5 text-caption rounded-lg bg-[var(--color-bg-tertiary)] text-[var(--color-text-primary)] hover:bg-[var(--color-primary)] hover:text-white transition-apple"
+              >
+                {getQuickFilterLabel('last-month')}
+              </button>
+              <button
+                onClick={() => handleQuickFilter('two-months-ago')}
+                className="px-3 py-1.5 text-caption rounded-lg bg-[var(--color-bg-tertiary)] text-[var(--color-text-primary)] hover:bg-[var(--color-primary)] hover:text-white transition-apple"
+              >
+                {getQuickFilterLabel('two-months-ago')}
+              </button>
+              <span className="border-l border-[var(--color-border-light)] mx-1"></span>
+              <button
+                onClick={() => handleQuickFilter('last-7-days')}
+                className="px-3 py-1.5 text-caption rounded-lg bg-[var(--color-bg-tertiary)] text-[var(--color-text-primary)] hover:bg-[var(--color-primary)] hover:text-white transition-apple"
+              >
+                Last 7 Days
+              </button>
+              <button
+                onClick={() => handleQuickFilter('last-30-days')}
+                className="px-3 py-1.5 text-caption rounded-lg bg-[var(--color-bg-tertiary)] text-[var(--color-text-primary)] hover:bg-[var(--color-primary)] hover:text-white transition-apple"
+              >
+                Last 30 Days
+              </button>
+              <button
+                onClick={() => handleQuickFilter('last-3-months')}
+                className="px-3 py-1.5 text-caption rounded-lg bg-[var(--color-bg-tertiary)] text-[var(--color-text-primary)] hover:bg-[var(--color-primary)] hover:text-white transition-apple"
+              >
+                Last 3 Months
+              </button>
+              <button
+                onClick={() => handleQuickFilter('this-year')}
+                className="px-3 py-1.5 text-caption rounded-lg bg-[var(--color-bg-tertiary)] text-[var(--color-text-primary)] hover:bg-[var(--color-primary)] hover:text-white transition-apple"
+              >
+                This Year
+              </button>
+              <button
+                onClick={() => handleQuickFilter('last-year')}
+                className="px-3 py-1.5 text-caption rounded-lg bg-[var(--color-bg-tertiary)] text-[var(--color-text-primary)] hover:bg-[var(--color-primary)] hover:text-white transition-apple"
+              >
+                Last Year
+              </button>
             </div>
           </div>
-          <p className="text-body text-[var(--color-text-secondary)]">
-            Filter by categories and rules to organize your transactions
-          </p>
+
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            {/* Date Range */}
+            <div>
+              <label className="block text-caption text-[var(--color-text-secondary)] mb-2">
+                From Date
+              </label>
+              <input
+                type="date"
+                value={dateFilters.startDate}
+                onChange={(e) => setDateFilters(prev => ({ ...prev, startDate: e.target.value }))}
+                className="input"
+              />
+            </div>
+            <div>
+              <label className="block text-caption text-[var(--color-text-secondary)] mb-2">
+                To Date
+              </label>
+              <input
+                type="date"
+                value={dateFilters.endDate}
+                onChange={(e) => setDateFilters(prev => ({ ...prev, endDate: e.target.value }))}
+                className="input"
+              />
+            </div>
+            {/* Merchant Search */}
+            <div>
+              <label className="block text-caption text-[var(--color-text-secondary)] mb-2">
+                Merchant
+              </label>
+              <input
+                type="text"
+                placeholder="Search merchants..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="input"
+              />
+            </div>
+            {/* Action Buttons */}
+            <div className="flex items-end gap-2">
+              <button
+                onClick={handleClearDateFilters}
+                className="text-caption font-medium text-[var(--color-text-secondary)] hover:text-[var(--color-primary)] transition-apple"
+              >
+                Clear filters
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* Search and Category Filters */}
+      {/* Category Filters and Actions */}
       <div className="border-b border-[var(--color-border)] bg-[var(--color-bg-primary)]">
         <div className="px-6 py-4">
-          <div className="flex items-center gap-4 mb-4">
-            <input
-              type="text"
-              placeholder="Search merchants..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="input flex-1"
-            />
+          <CategoryFilters
+            categories={categories}
+            selectedCategoryIds={selectedCategoryIds}
+            onCategorySelect={setSelectedCategoryIds}
+            onCategoryUpdate={handleCategoryUpdate}
+          />
+          <div className="flex items-center gap-4 mt-4">
             <div className="relative group">
               <button
                 onClick={handleRecategorizeAll}
@@ -210,13 +446,6 @@ export default function CategoriesPage() {
               )}
             </div>
           </div>
-
-          <CategoryFilters
-            categories={categories}
-            selectedCategoryIds={selectedCategoryIds}
-            onCategorySelect={setSelectedCategoryIds}
-            onCategoryUpdate={handleCategoryUpdate}
-          />
         </div>
       </div>
 
@@ -241,7 +470,8 @@ export default function CategoriesPage() {
             selectedCategoryIds={selectedCategoryIds}
             selectedCategory={selectedCategory}
             selectedRuleIndex={selectedRuleIndex}
-            statsWindow={statsWindow}
+            startDate={dateFilters.startDate}
+            endDate={dateFilters.endDate}
             searchQuery={searchQuery}
             categories={categories}
             onCategoryUpdate={handleCategoryUpdate}
