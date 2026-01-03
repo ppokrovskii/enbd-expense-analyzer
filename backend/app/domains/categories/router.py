@@ -1,7 +1,7 @@
 """Categories API router - Category CRUD, Rules, and AI operations."""
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from typing import List, Optional
 from pydantic import BaseModel
 from datetime import datetime, timedelta
@@ -455,10 +455,20 @@ def ai_bulk_suggest(
         if not merchant_name:
             continue
         
+        # FIX: Filter stats by date range AND only uncategorized transactions
+        # This matches the same criteria used to generate the suggestion
         stats = db.query(
             func.count(Transaction.id).label('count'),
             func.sum(Transaction.amount_signed).label('amount')
-        ).filter(Transaction.merchant == merchant_name).first()
+        ).filter(
+            Transaction.merchant == merchant_name,
+            Transaction.date >= cutoff_date,
+            or_(
+                Transaction.category.is_(None),
+                Transaction.category == '',
+                Transaction.category == 'Other'
+            )
+        ).first()
         
         result.append(AIBulkSuggestion(
             merchant=merchant_name,
