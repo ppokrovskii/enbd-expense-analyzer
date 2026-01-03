@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import PersonSwitcher from "./PersonSwitcher";
 
 export default function Navigation() {
   const pathname = usePathname();
@@ -16,12 +17,15 @@ export default function Navigation() {
     <nav className="bg-[var(--color-bg-primary)]/95 backdrop-blur-xl border-b border-white/5 sticky top-0 z-50">
       <div className="max-w-container mx-auto px-6">
         <div className="flex items-center justify-between h-16">
-          <Link 
-            href="/" 
-            className="text-heading font-semibold text-[var(--color-text-primary)] hover:text-[var(--color-primary)] transition-apple"
-          >
-            Expense Analyzer
-          </Link>
+          <div className="flex items-center gap-4">
+            <Link 
+              href="/" 
+              className="text-heading font-semibold text-[var(--color-text-primary)] hover:text-[var(--color-primary)] transition-apple"
+            >
+              Expense Analyzer
+            </Link>
+            <PersonSwitcher />
+          </div>
           <div className="flex items-center gap-1">
             <Link 
               href="/" 
