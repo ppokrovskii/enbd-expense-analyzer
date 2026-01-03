@@ -327,7 +327,7 @@ export default function RulesList({
         level="category"
         categoryId={category.id}
         days={statsWindow}
-        availableCategories={allCategories.map((c) => c.name)}
+        allCategories={allCategories}
         onSuccess={onCategoryUpdate}
       />
     </div>

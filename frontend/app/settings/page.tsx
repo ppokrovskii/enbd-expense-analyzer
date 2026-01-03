@@ -33,7 +33,7 @@ export default function SettingsPage() {
   });
   
   // Category form - only name + color (no keywords)
-  const [categoryForm, setCategoryForm] = useState({
+  const [categoryForm, setCategoryForm] = useState<{ name: string; color: string }>({
     name: '',
     color: COLOR_PALETTE[0],
   });

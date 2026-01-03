@@ -11,7 +11,7 @@ import AllMerchantsList from "./AllMerchantsList";
 interface DetailPanelProps {
   selectedCategoryId: number | null;
   selectedRuleIndex: number | null;
-  onRuleSelect: (ruleIndex: number) => void;
+  onRuleSelect: (ruleIndex: number | null) => void;
   statsWindow: 30 | 60 | 90;
   categories: Category[];
   onCategoryUpdate: () => void;
@@ -65,7 +65,7 @@ export default function DetailPanel({
           <AIBulkModal
             isOpen={showAIModal}
             onClose={() => setShowAIModal(false)}
-            onCategoryUpdate={onCategoryUpdate}
+            onSuccess={onCategoryUpdate}
             allCategories={categories}
             level="global"
             days={statsWindow}
@@ -94,10 +94,10 @@ export default function DetailPanel({
         <AIBulkModal
           isOpen={showAIModal}
           onClose={() => setShowAIModal(false)}
-          onCategoryUpdate={onCategoryUpdate}
+          onSuccess={onCategoryUpdate}
           allCategories={categories}
           level="category"
-          categoryId={selectedCategoryId}
+          categoryId={selectedCategoryId ?? undefined}
           days={statsWindow}
         />
       )}

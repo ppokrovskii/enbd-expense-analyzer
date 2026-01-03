@@ -69,6 +69,26 @@ class RuleResponse(BaseModel):
         from_attributes = True
 
 
+class RuleWithCategoryResponse(BaseModel):
+    id: int
+    category_id: int
+    category_name: str
+    keywords: List[str]
+    exclude_keywords: List[str]
+    priority: int
+    
+    class Config:
+        from_attributes = True
+
+
+class PaginatedRulesResponse(BaseModel):
+    items: List[RuleWithCategoryResponse]
+    total: int
+    offset: int
+    limit: int
+    has_more: bool
+
+
 class RuleMerchantGroup(BaseModel):
     merchant: str
     transaction_count: int
@@ -248,18 +268,57 @@ def delete_category(category_id: int, db: Session = Depends(get_db), user_id: st
 # Rules Endpoints
 # ============================================================================
 
-@router.get("/rules/", response_model=List[RuleResponse])
+@router.get("/rules/", response_model=PaginatedRulesResponse)
 def list_rules(
     category_id: Optional[int] = None,
+    search: Optional[str] = None,
+    offset: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=100),
     db: Session = Depends(get_db),
     user_id: str = Depends(get_user_id)
 ):
-    """Get all rules, optionally filtered by category."""
-    query = db.query(Rule).filter(Rule.user_id == user_id)
+    """Get all rules with pagination, optionally filtered by category or search query."""
+    # Base query with category join
+    query = db.query(Rule, Category.name.label('category_name')).join(
+        Category, Rule.category_id == Category.id
+    ).filter(Rule.user_id == user_id)
+    
     if category_id:
         query = query.filter(Rule.category_id == category_id)
-    rules = query.order_by(Rule.priority.desc(), Rule.id).all()
-    return rules
+    
+    # Search in keywords (JSON array)
+    if search:
+        # Search for rules where any keyword contains the search term
+        search_pattern = f"%{search}%"
+        # For JSON array search, we cast to string and use LIKE
+        from sqlalchemy import cast, String
+        query = query.filter(cast(Rule.keywords, String).ilike(search_pattern))
+    
+    # Get total count before pagination
+    total = query.count()
+    
+    # Apply pagination
+    results = query.order_by(Rule.priority.desc(), Rule.id).offset(offset).limit(limit).all()
+    
+    items = [
+        RuleWithCategoryResponse(
+            id=rule.id,
+            category_id=rule.category_id,
+            category_name=category_name,
+            keywords=rule.keywords,
+            exclude_keywords=rule.exclude_keywords,
+            priority=rule.priority
+        )
+        for rule, category_name in results
+    ]
+    
+    return PaginatedRulesResponse(
+        items=items,
+        total=total,
+        offset=offset,
+        limit=limit,
+        has_more=(offset + limit) < total
+    )
 
 
 @router.post("/rules/", response_model=RuleResponse, status_code=status.HTTP_201_CREATED)
