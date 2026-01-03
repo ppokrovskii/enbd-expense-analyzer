@@ -11,7 +11,11 @@ from decimal import Decimal
 
 client = TestClient(app)
 
+<<<<<<< Updated upstream
 # The test_db fixture is provided by conftest.py using testcontainers
+=======
+# test_db fixture is now provided by conftest.py (uses testcontainers)
+>>>>>>> Stashed changes
 
 
 def test_create_category_without_keywords(test_db):

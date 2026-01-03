@@ -13,6 +13,7 @@ import {
   Cell,
 } from "recharts";
 import SegmentedControl from "./ui/SegmentedControl";
+import { getApiHeaders } from "../utils/api";
 import SkeletonLoader from "./ui/SkeletonLoader";
 import EmptyState from "./ui/EmptyState";
 
@@ -61,7 +62,7 @@ export default function SpendingChart({
     const fetchCategoryColors = async () => {
       try {
         const response = await fetch('http://localhost:8000/api/categories/', {
-          headers: { 'X-User-Id': 'default_user' },
+          headers: getApiHeaders(),
         });
         if (response.ok) {
           const categories = await response.json();
@@ -113,7 +114,8 @@ export default function SpendingChart({
       if (filters.merchant) params.append("merchant", filters.merchant);
 
       const response = await fetch(
-        `http://localhost:8000${endpoint}${params.toString() ? `?${params.toString()}` : ""}`
+        `http://localhost:8000${endpoint}${params.toString() ? `?${params.toString()}` : ""}`,
+        { headers: getApiHeaders() }
       );
 
       if (!response.ok) {
@@ -158,7 +160,8 @@ export default function SpendingChart({
       if (filters.merchant) params.append("merchant", filters.merchant);
 
       const response = await fetch(
-        `http://localhost:8000${endpoint}${params.toString() ? `?${params.toString()}` : ""}`
+        `http://localhost:8000${endpoint}${params.toString() ? `?${params.toString()}` : ""}`,
+        { headers: getApiHeaders() }
       );
 
       if (!response.ok) {

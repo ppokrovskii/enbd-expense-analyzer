@@ -11,7 +11,7 @@ import tempfile
 import shutil
 
 from app.shared.database import get_db
-from app.shared.dependencies import get_user_id
+from app.shared.dependencies import get_user_id, get_person_id
 from .models import Transaction
 from .service import TransactionService
 from .import_service import MultiBankImportService
@@ -39,7 +39,8 @@ async def upload_files(
     files: List[UploadFile] = File(...),
     bank_name: Optional[str] = None,  # User can specify bank name
     db: Session = Depends(get_db),
-    user_id: str = Depends(get_user_id)
+    user_id: str = Depends(get_user_id),
+    person_id: Optional[int] = Depends(get_person_id)
 ):
     """
     Upload bank statement files with automatic format detection.
@@ -78,7 +79,7 @@ async def upload_files(
         unparsed_files = []
         
         for file_path in temp_files:
-            result = MultiBankImportService.import_file(file_path, db, user_id, bank_name)
+            result = MultiBankImportService.import_file(file_path, db, user_id, bank_name, person_id)
             
             if result['success']:
                 total_added += result['transactions_added']
@@ -169,6 +170,7 @@ class ChartDataResponse(BaseModel):
 def get_transactions(
     db: Session = Depends(get_db),
     user_id: str = Depends(get_user_id),
+    person_id: Optional[int] = Depends(get_person_id),
     start_date: Optional[date] = Query(None, description="Filter by start date (inclusive)"),
     end_date: Optional[date] = Query(None, description="Filter by end date (inclusive)"),
     categories: Optional[List[str]] = Query(None, description="Filter by categories"),
@@ -193,7 +195,8 @@ def get_transactions(
         page=page,
         page_size=page_size,
         sort_by=sort_by,
-        sort_order=sort_order
+        sort_order=sort_order,
+        person_id=person_id
     )
     
     # Calculate total amount for ALL filtered transactions (not just current page)
@@ -209,7 +212,8 @@ def get_transactions(
         page=1,
         page_size=total,
         sort_by=sort_by,
-        sort_order=sort_order
+        sort_order=sort_order,
+        person_id=person_id
     )
     
     total_amount = sum(abs(float(t.amount_signed or 0)) for t in all_transactions)
@@ -227,6 +231,7 @@ def get_transactions(
 def get_weekly_chart_data(
     db: Session = Depends(get_db),
     user_id: str = Depends(get_user_id),
+    person_id: Optional[int] = Depends(get_person_id),
     start_date: Optional[date] = Query(None, description="Filter by start date"),
     end_date: Optional[date] = Query(None, description="Filter by end date"),
     categories: Optional[List[str]] = Query(None, description="Filter by categories"),
@@ -243,7 +248,8 @@ def get_weekly_chart_data(
         categories=categories,
         accounts=accounts,
         merchant=merchant,
-        exclude_transfers=exclude_transfers
+        exclude_transfers=exclude_transfers,
+        person_id=person_id
     )
     
     # Transform results to response format
@@ -272,6 +278,7 @@ def get_weekly_chart_data(
 def get_monthly_chart_data(
     db: Session = Depends(get_db),
     user_id: str = Depends(get_user_id),
+    person_id: Optional[int] = Depends(get_person_id),
     start_date: Optional[date] = Query(None, description="Filter by start date"),
     end_date: Optional[date] = Query(None, description="Filter by end date"),
     categories: Optional[List[str]] = Query(None, description="Filter by categories"),
@@ -288,7 +295,8 @@ def get_monthly_chart_data(
         categories=categories,
         accounts=accounts,
         merchant=merchant,
-        exclude_transfers=exclude_transfers
+        exclude_transfers=exclude_transfers,
+        person_id=person_id
     )
     
     # Transform results to response format

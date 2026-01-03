@@ -123,7 +123,8 @@ class MultiBankImportService:
         file_path: Path,
         db: Session,
         user_id: str = 'default_user',
-        bank_name: Optional[str] = None
+        bank_name: Optional[str] = None,
+        person_id: Optional[int] = None
     ) -> Dict[str, Any]:
         """
         Import a bank statement file with automatic format detection.
@@ -133,6 +134,7 @@ class MultiBankImportService:
             db: Database session
             user_id: User ID for multi-tenant support
             bank_name: Optional user-provided bank name
+            person_id: Optional person ID for person-level data isolation
             
         Returns:
             Dictionary with import results
@@ -179,11 +181,11 @@ class MultiBankImportService:
                 MultiBankImportService.create_transaction_hash, axis=1
             )
             
-            # Get existing transaction hashes
-            existing_hashes = {
-                t.transaction_hash 
-                for t in db.query(Transaction.transaction_hash).filter(Transaction.user_id == user_id).all()
-            }
+            # Get existing transaction hashes (filter by person_id if provided)
+            hash_query = db.query(Transaction.transaction_hash).filter(Transaction.user_id == user_id)
+            if person_id is not None:
+                hash_query = hash_query.filter(Transaction.person_id == person_id)
+            existing_hashes = {t.transaction_hash for t in hash_query.all()}
             
             # Filter out duplicates
             new_transactions = df_normalized[~df_normalized['transaction_hash'].isin(existing_hashes)]
@@ -204,6 +206,7 @@ class MultiBankImportService:
                 
                 transaction = Transaction(
                     user_id=user_id,
+                    person_id=person_id,
                     date=pd.to_datetime(row['Date']).date(),
                     account=row['Account'],
                     description=str(row['Description']) if pd.notna(row['Description']) else None,

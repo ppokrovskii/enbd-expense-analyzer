@@ -7,6 +7,17 @@ from sqlalchemy.orm import sessionmaker
 from app.shared.database import Base, get_db
 from app.main import app as fastapi_app
 
+# Import all models so they register with Base.metadata before create_all()
+from app.domains.transactions.models import Transaction, UnparsedFile
+from app.domains.categories.models import Category, Rule, LLMCache
+from app.domains.accounts.models import UserAccount
+from app.domains.chat.models import ChatSession, ChatMessage, ChatContext, TokenUsage
+from app.domains.jobs.models import BackgroundJob
+from app.domains.persons.models import Person
+from app.domains.recurring.models import RecurringGroup, RecurringOccurrence
+from app.domains.insights.models import Insight
+from app.domains.reports.models import Report
+
 
 # Ensure Docker client can connect (for both users)
 if not os.getenv('DOCKER_HOST'):

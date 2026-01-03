@@ -5,57 +5,17 @@ from sqlalchemy.orm import Session
 from datetime import date
 from decimal import Decimal
 from app.main import app
-from app.database import get_db, engine, Base
-from app.services.category_service import CategoryService
-from app.services.account_service import AccountService
-from app.models import Transaction, Category, Rule, UserAccount
+from app.shared.database import get_db
+from app.domains.categories.service import CategoryService
+from app.domains.accounts.service import AccountService
+from app.domains.transactions.models import Transaction
+from app.domains.categories.models import Category, Rule
+from app.domains.accounts.models import UserAccount
 
 client = TestClient(app)
 
 
-@pytest.fixture(scope="function")
-def test_db():
-    """Create a test database session."""
-    Base.metadata.create_all(bind=engine)
-    
-    from sqlalchemy.orm import sessionmaker
-    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-    session = SessionLocal()
-    
-    # Clean up before test
-    try:
-        session.query(Transaction).filter(Transaction.user_id.like('%test%')).delete()
-        session.query(Category).filter(Category.user_id.like('%test%')).delete()
-        session.query(UserAccount).filter(UserAccount.user_id.like('%test%')).delete()
-        session.commit()
-    except Exception as e:
-        print(f"Pre-cleanup error: {e}")
-        session.rollback()
-    
-    def override_get_db():
-        try:
-            yield session
-        finally:
-            pass
-    
-    app.dependency_overrides[get_db] = override_get_db
-    
-    yield session
-    
-    # Cleanup after test
-    try:
-        session.rollback()
-        session.query(Transaction).filter(Transaction.user_id.like('%test%')).delete()
-        session.query(Category).filter(Category.user_id.like('%test%')).delete()
-        session.query(UserAccount).filter(UserAccount.user_id.like('%test%')).delete()
-        session.commit()
-    except Exception as e:
-        print(f"Post-cleanup error: {e}")
-        session.rollback()
-    finally:
-        session.close()
-    
-    app.dependency_overrides.clear()
+# test_db fixture is now provided by conftest.py (uses testcontainers)
 
 
 def test_search_text_populated_on_import(test_db):

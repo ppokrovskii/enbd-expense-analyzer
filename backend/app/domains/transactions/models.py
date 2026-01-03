@@ -1,5 +1,5 @@
 """SQLAlchemy models for the Transactions domain."""
-from sqlalchemy import Column, Integer, String, Text, Date, Numeric, DateTime, Index, JSON, Boolean
+from sqlalchemy import Column, Integer, String, Text, Date, Numeric, DateTime, Index, JSON, Boolean, ForeignKey
 from datetime import datetime
 from app.shared.database import Base
 
@@ -11,6 +11,7 @@ class Transaction(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(String(50), nullable=False, server_default='default_user', index=True)
+    person_id = Column(Integer, ForeignKey('persons.id'), nullable=True, index=True)
     date = Column(Date, nullable=False, index=True)
     account = Column(String(100), nullable=False)
     description = Column(Text)

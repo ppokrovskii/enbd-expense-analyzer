@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { setActivePersonId } from '../utils/api';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
@@ -37,6 +38,7 @@ export function usePerson() {
       const active = data.find((p: Person) => p.is_active);
       if (active) {
         setActivePerson(active);
+        setActivePersonId(active.id);  // Update global person_id for API calls
       }
       
       setError(null);
@@ -83,6 +85,7 @@ export function usePerson() {
       
       const data = await response.json();
       setActivePerson(data);
+      setActivePersonId(data.id);  // Update global person_id for API calls
       
       // Refresh the list to update is_active flags
       await fetchPersons();
@@ -175,6 +178,20 @@ export function usePerson() {
     fetchPersons();
   }, [fetchPersons]);
 
+  // Helper to get headers for API calls that include person_id
+  const getApiHeaders = (): Record<string, string> => {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'X-User-Id': 'default_user',
+    };
+    
+    if (activePerson?.id) {
+      headers['X-Person-Id'] = String(activePerson.id);
+    }
+    
+    return headers;
+  };
+
   return {
     persons,
     activePerson,
@@ -185,6 +202,7 @@ export function usePerson() {
     deletePerson,
     updatePerson,
     refresh: fetchPersons,
+    getApiHeaders,
   };
 }
 
