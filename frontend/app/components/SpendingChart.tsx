@@ -218,7 +218,21 @@ export default function SpendingChart({
     );
   }
 
-  if (!chartData || chartData.data.length === 0) {
+  const hasChartData = chartData && chartData.data && chartData.data.length > 0;
+
+  // Separate income and expense categories
+  const incomeCategories = ["Salary", "Incoming Transfer"];
+  const transferCategories = ["Transfer Between My Accounts", "Outgoing Transfer"];
+  
+  // Get all available categories for the legend
+  // Use allAvailableCategories if provided (includes all categories from API)
+  // Otherwise fallback to chartData categories (which are already filtered by backend)
+  const legendCategories = allAvailableCategories.length > 0 
+    ? allAvailableCategories 
+    : (chartData?.categories || []);
+  
+  // If no chart data and no available categories, show empty state
+  if (!hasChartData && legendCategories.length === 0) {
     return (
       <div className="card">
         <EmptyState
@@ -233,17 +247,6 @@ export default function SpendingChart({
       </div>
     );
   }
-
-  // Separate income and expense categories
-  const incomeCategories = ["Salary", "Incoming Transfer"];
-  const transferCategories = ["Transfer Between My Accounts", "Outgoing Transfer"];
-  
-  // Get all available categories for the legend
-  // Use allAvailableCategories if provided (includes all categories from API)
-  // Otherwise fallback to chartData categories (which are already filtered by backend)
-  const legendCategories = allAvailableCategories.length > 0 
-    ? allAvailableCategories 
-    : (chartData?.categories || []);
   
   // Determine which categories to display in chart based on filter mode
   const displayCategories = (() => {
@@ -309,24 +312,26 @@ export default function SpendingChart({
   // Transform data: each period has income and expense bars
   // For stacked bars in Recharts, the Bar component order determines stack order
   // We need ALL categories in the data, even if zero, in consistent order
-  const transformedData = chartData.periods.map((period: string) => {
-    const periodData: Record<string, any> = { period };
-    
-    // Add ALL expense categories in the same order as stackedExpenseCategories
-    // This ensures consistent stacking across all bars
-    expenseCategories.forEach((category: string) => {
-      const item = chartData.data.find((d: any) => d.period === period && d.category === category);
-      periodData[`expense_${category}`] = item ? Number(item.total) : 0;
-    });
-    
-    // Add income categories (stacked in separate bar)
-    actualIncomeCategories.forEach((category: string) => {
-      const item = chartData.data.find((d: any) => d.period === period && d.category === category);
-      periodData[`income_${category}`] = item ? Number(item.total) : 0;
-    });
-    
-    return periodData;
-  });
+  const transformedData = hasChartData 
+    ? chartData.periods.map((period: string) => {
+        const periodData: Record<string, any> = { period };
+        
+        // Add ALL expense categories in the same order as stackedExpenseCategories
+        // This ensures consistent stacking across all bars
+        expenseCategories.forEach((category: string) => {
+          const item = chartData.data.find((d: any) => d.period === period && d.category === category);
+          periodData[`expense_${category}`] = item ? Number(item.total) : 0;
+        });
+        
+        // Add income categories (stacked in separate bar)
+        actualIncomeCategories.forEach((category: string) => {
+          const item = chartData.data.find((d: any) => d.period === period && d.category === category);
+          periodData[`income_${category}`] = item ? Number(item.total) : 0;
+        });
+        
+        return periodData;
+      })
+    : [];
   
   // For rendering bars, we need the largest categories FIRST (they appear at bottom in stack)
   // Sort by total descending (largest first = bottom of stack in Recharts)
@@ -445,7 +450,7 @@ export default function SpendingChart({
       <div className="flex items-center justify-between">
         <div>
           <p className="text-caption text-[var(--color-text-secondary)]">
-            Showing {chartData.periods.length} periods
+            {hasChartData ? `Showing ${chartData.periods.length} periods` : 'No data for selected filters'}
           </p>
           <div className="flex items-center gap-4 mt-2">
             <div className="flex items-center gap-2">
@@ -476,6 +481,17 @@ export default function SpendingChart({
 
       {/* Chart */}
       <div className={`transition-opacity duration-300 min-h-[400px] ${isRefreshing ? 'opacity-60' : 'opacity-100'}`}>
+        {!hasChartData ? (
+          <div className="flex items-center justify-center h-[400px] bg-[var(--color-bg-tertiary)]/30 rounded-xl border border-dashed border-[var(--color-border-light)]">
+            <div className="text-center">
+              <svg className="w-12 h-12 mx-auto text-[var(--color-text-tertiary)] mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+              </svg>
+              <p className="text-body text-[var(--color-text-secondary)]">No transactions match your filters</p>
+              <p className="text-caption text-[var(--color-text-tertiary)] mt-1">Try selecting different categories below</p>
+            </div>
+          </div>
+        ) : (
         <ResponsiveContainer width="100%" height={400}>
           <BarChart
             data={transformedData}
@@ -579,6 +595,7 @@ export default function SpendingChart({
           ))}
         </BarChart>
       </ResponsiveContainer>
+        )}
       </div>
 
       {/* Category Summary - Unified List */}

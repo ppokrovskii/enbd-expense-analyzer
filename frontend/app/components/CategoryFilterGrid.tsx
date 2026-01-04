@@ -174,8 +174,8 @@ export default function CategoryFilterGrid({
         </button>
       </div>
 
-      {/* Category list with 2 columns */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-2">
+      {/* Category list with 2 columns - scrollable with max height */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-2 max-h-[300px] overflow-y-auto">
         {categoryTotals.map(({ category, total, isIncome }) => {
           const categoryId = getCategoryId(category);
           if (!categoryId) return null;
