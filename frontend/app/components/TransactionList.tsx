@@ -442,7 +442,7 @@ export default function TransactionList({
                     type="checkbox"
                     checked={allOnPageSelected}
                     onChange={handleSelectAllOnPage}
-                    className="w-4 h-4 rounded border-[var(--color-border)] text-[var(--color-primary)] focus:ring-[var(--color-primary)] cursor-pointer"
+                    className="checkbox"
                     title="Select all merchants on this page"
                   />
                 </th>
@@ -488,7 +488,7 @@ export default function TransactionList({
                       type="checkbox"
                       checked={selectedMerchants.has(transaction.merchant)}
                       onChange={() => handleSelectMerchant(transaction.merchant)}
-                      className="w-4 h-4 rounded border-[var(--color-border)] text-[var(--color-primary)] focus:ring-[var(--color-primary)] cursor-pointer"
+                      className="checkbox"
                     />
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-body text-[var(--color-text-primary)]">
