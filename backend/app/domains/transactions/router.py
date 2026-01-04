@@ -10,6 +10,7 @@ from decimal import Decimal
 import tempfile
 import shutil
 
+from app.shared.filtered_query import FilteredQueryContext, get_filtered_context
 from app.shared.database import get_db
 from app.shared.dependencies import get_user_id, get_person_id
 from .models import Transaction
@@ -38,9 +39,7 @@ class UploadResponse(BaseModel):
 async def upload_files(
     files: List[UploadFile] = File(...),
     bank_name: Optional[str] = None,  # User can specify bank name
-    db: Session = Depends(get_db),
-    user_id: str = Depends(get_user_id),
-    person_id: Optional[int] = Depends(get_person_id)
+    ctx: FilteredQueryContext = Depends(get_filtered_context)
 ):
     """
     Upload bank statement files with automatic format detection.
@@ -79,7 +78,9 @@ async def upload_files(
         unparsed_files = []
         
         for file_path in temp_files:
-            result = MultiBankImportService.import_file(file_path, db, user_id, bank_name, person_id)
+            result = MultiBankImportService.import_file(
+                file_path, ctx.db, ctx.user_id, bank_name, ctx.person_id
+            )
             
             if result['success']:
                 total_added += result['transactions_added']
@@ -168,9 +169,6 @@ class ChartDataResponse(BaseModel):
 
 @router.get("/transactions", response_model=TransactionListResponse)
 def get_transactions(
-    db: Session = Depends(get_db),
-    user_id: str = Depends(get_user_id),
-    person_id: Optional[int] = Depends(get_person_id),
     start_date: Optional[date] = Query(None, description="Filter by start date (inclusive)"),
     end_date: Optional[date] = Query(None, description="Filter by end date (inclusive)"),
     categories: Optional[List[str]] = Query(None, description="Filter by categories"),
@@ -180,12 +178,13 @@ def get_transactions(
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(50, ge=1, le=1000, description="Number of items per page"),
     sort_by: str = Query('date', description="Sort by field: 'date' or 'amount'"),
-    sort_order: str = Query('desc', description="Sort order: 'asc' or 'desc'")
+    sort_order: str = Query('desc', description="Sort order: 'asc' or 'desc'"),
+    ctx: FilteredQueryContext = Depends(get_filtered_context)
 ):
     """Get transactions with optional filtering, pagination, and sorting."""
     transactions, total = TransactionService.get_filtered_transactions(
-        db=db,
-        user_id=user_id,
+        db=ctx.db,
+        user_id=ctx.user_id,
         start_date=start_date,
         end_date=end_date,
         categories=categories,
@@ -196,13 +195,13 @@ def get_transactions(
         page_size=page_size,
         sort_by=sort_by,
         sort_order=sort_order,
-        person_id=person_id
+        person_id=ctx.person_id
     )
     
     # Calculate total amount for ALL filtered transactions (not just current page)
     all_transactions, _ = TransactionService.get_filtered_transactions(
-        db=db,
-        user_id=user_id,
+        db=ctx.db,
+        user_id=ctx.user_id,
         start_date=start_date,
         end_date=end_date,
         categories=categories,
@@ -213,7 +212,7 @@ def get_transactions(
         page_size=total,
         sort_by=sort_by,
         sort_order=sort_order,
-        person_id=person_id
+        person_id=ctx.person_id
     )
     
     total_amount = sum(abs(float(t.amount_signed or 0)) for t in all_transactions)
@@ -229,27 +228,25 @@ def get_transactions(
 
 @router.get("/chart/weekly", response_model=ChartDataResponse)
 def get_weekly_chart_data(
-    db: Session = Depends(get_db),
-    user_id: str = Depends(get_user_id),
-    person_id: Optional[int] = Depends(get_person_id),
     start_date: Optional[date] = Query(None, description="Filter by start date"),
     end_date: Optional[date] = Query(None, description="Filter by end date"),
     categories: Optional[List[str]] = Query(None, description="Filter by categories"),
     accounts: Optional[List[str]] = Query(None, description="Filter by accounts"),
     merchant: Optional[str] = Query(None, description="Filter by merchant substring"),
-    exclude_transfers: bool = Query(True, description="Exclude internal transfers")
+    exclude_transfers: bool = Query(True, description="Exclude internal transfers"),
+    ctx: FilteredQueryContext = Depends(get_filtered_context)
 ):
     """Get aggregated data for weekly stacked column chart."""
     results = TransactionService.get_weekly_aggregation(
-        db=db,
-        user_id=user_id,
+        db=ctx.db,
+        user_id=ctx.user_id,
         start_date=start_date,
         end_date=end_date,
         categories=categories,
         accounts=accounts,
         merchant=merchant,
         exclude_transfers=exclude_transfers,
-        person_id=person_id
+        person_id=ctx.person_id
     )
     
     # Transform results to response format
@@ -276,27 +273,25 @@ def get_weekly_chart_data(
 
 @router.get("/chart/monthly", response_model=ChartDataResponse)
 def get_monthly_chart_data(
-    db: Session = Depends(get_db),
-    user_id: str = Depends(get_user_id),
-    person_id: Optional[int] = Depends(get_person_id),
     start_date: Optional[date] = Query(None, description="Filter by start date"),
     end_date: Optional[date] = Query(None, description="Filter by end date"),
     categories: Optional[List[str]] = Query(None, description="Filter by categories"),
     accounts: Optional[List[str]] = Query(None, description="Filter by accounts"),
     merchant: Optional[str] = Query(None, description="Filter by merchant substring"),
-    exclude_transfers: bool = Query(True, description="Exclude internal transfers")
+    exclude_transfers: bool = Query(True, description="Exclude internal transfers"),
+    ctx: FilteredQueryContext = Depends(get_filtered_context)
 ):
     """Get aggregated data for monthly stacked column chart."""
     results = TransactionService.get_monthly_aggregation(
-        db=db,
-        user_id=user_id,
+        db=ctx.db,
+        user_id=ctx.user_id,
         start_date=start_date,
         end_date=end_date,
         categories=categories,
         accounts=accounts,
         merchant=merchant,
         exclude_transfers=exclude_transfers,
-        person_id=person_id
+        person_id=ctx.person_id
     )
     
     # Transform results to response format
@@ -322,17 +317,12 @@ def get_monthly_chart_data(
 
 @router.get("/stats/summary")
 def get_summary_stats(
-    db: Session = Depends(get_db),
-    user_id: str = Depends(get_user_id),
-    person_id: Optional[int] = Depends(get_person_id),
     start_date: Optional[date] = Query(None),
-    end_date: Optional[date] = Query(None)
+    end_date: Optional[date] = Query(None),
+    ctx: FilteredQueryContext = Depends(get_filtered_context)
 ):
     """Get summary statistics for transactions."""
-    query = db.query(Transaction).filter(Transaction.user_id == user_id)
-    
-    if person_id is not None:
-        query = query.filter(Transaction.person_id == person_id)
+    query = ctx.query(Transaction)
     
     if start_date:
         query = query.filter(Transaction.date >= start_date)
@@ -361,33 +351,29 @@ def get_summary_stats(
 
 
 @router.get("/filters/options")
-def get_filter_options(
-    db: Session = Depends(get_db),
-    user_id: str = Depends(get_user_id),
-    person_id: Optional[int] = Depends(get_person_id)
-):
+def get_filter_options(ctx: FilteredQueryContext = Depends(get_filtered_context)):
     """Get available filter options (categories, accounts, date range)."""
-    # Build base filter
-    base_filter = [Transaction.user_id == user_id]
-    if person_id is not None:
-        base_filter.append(Transaction.person_id == person_id)
-    
-    # Get unique categories (excluding None)
-    categories = db.query(Transaction.category).filter(
-        *base_filter,
+    # Get unique categories (excluding None) - filtered by user/person
+    categories = ctx.query(Transaction).with_entities(
+        Transaction.category
+    ).filter(
         Transaction.category.isnot(None)
     ).distinct().order_by(Transaction.category).all()
     categories_list = [c[0] for c in categories]
     
     # Get unique accounts
-    accounts = db.query(Transaction.account).filter(
-        *base_filter
+    accounts = ctx.query(Transaction).with_entities(
+        Transaction.account
     ).distinct().order_by(Transaction.account).all()
     accounts_list = [a[0] for a in accounts]
     
     # Get date range
-    min_date = db.query(func.min(Transaction.date)).filter(*base_filter).scalar()
-    max_date = db.query(func.max(Transaction.date)).filter(*base_filter).scalar()
+    min_date = ctx.query(Transaction).with_entities(
+        func.min(Transaction.date)
+    ).scalar()
+    max_date = ctx.query(Transaction).with_entities(
+        func.max(Transaction.date)
+    ).scalar()
     
     return {
         "categories": categories_list,
@@ -418,9 +404,6 @@ class MerchantListResponse(BaseModel):
 
 @router.get("/merchants", response_model=MerchantListResponse)
 def get_merchants(
-    db: Session = Depends(get_db),
-    user_id: str = Depends(get_user_id),
-    person_id: Optional[int] = Depends(get_person_id),
     start_date: Optional[date] = Query(None, description="Filter by start date (inclusive)"),
     end_date: Optional[date] = Query(None, description="Filter by end date (inclusive)"),
     categories: Optional[List[str]] = Query(None, description="Filter by categories"),
@@ -429,14 +412,15 @@ def get_merchants(
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(50, ge=1, le=500, description="Number of items per page"),
     sort_by: str = Query('total_amount', description="Sort by: 'merchant', 'total_amount', 'transaction_count', 'last_date'"),
-    sort_order: str = Query('desc', description="Sort order: 'asc' or 'desc'")
+    sort_order: str = Query('desc', description="Sort order: 'asc' or 'desc'"),
+    ctx: FilteredQueryContext = Depends(get_filtered_context)
 ):
     """Get transactions grouped by merchant with aggregated stats."""
     # Build base query with filters
-    base_filter = [Transaction.user_id == user_id]
+    base_filter = [Transaction.user_id == ctx.user_id]
     
-    if person_id is not None:
-        base_filter.append(Transaction.person_id == person_id)
+    if ctx.person_id is not None:
+        base_filter.append(Transaction.person_id == ctx.person_id)
     if start_date:
         base_filter.append(Transaction.date >= start_date)
     if end_date:
@@ -453,7 +437,7 @@ def get_merchants(
     base_filter.append(Transaction.merchant != '')
     
     # Aggregate by merchant
-    query = db.query(
+    query = ctx.raw_query(
         Transaction.merchant,
         func.min(Transaction.category).label('category'),  # Get most common category (simplified)
         func.count(Transaction.id).label('transaction_count'),
@@ -468,7 +452,7 @@ def get_merchants(
     
     # Get total count for pagination
     count_subquery = query.subquery()
-    total = db.query(func.count()).select_from(count_subquery).scalar() or 0
+    total = ctx.raw_query(func.count()).select_from(count_subquery).scalar() or 0
     
     # Apply sorting
     sort_column_map = {
@@ -489,7 +473,7 @@ def get_merchants(
     results = query.offset(offset).limit(page_size).all()
     
     # Calculate grand total (all merchants matching filter)
-    total_amount_query = db.query(
+    total_amount_query = ctx.raw_query(
         func.sum(func.abs(Transaction.amount_signed))
     ).filter(*base_filter).scalar() or 0
     
@@ -524,23 +508,19 @@ class UpdateTransactionCategoryRequest(BaseModel):
 def update_transaction_category(
     transaction_id: int,
     request: UpdateTransactionCategoryRequest,
-    db: Session = Depends(get_db),
-    user_id: str = Depends(get_user_id)
+    ctx: FilteredQueryContext = Depends(get_filtered_context)
 ):
     """Update the category of a specific transaction."""
-    # Find the transaction (ensuring user owns it)
-    transaction = db.query(Transaction).filter(
-        Transaction.id == transaction_id,
-        Transaction.user_id == user_id
-    ).first()
+    # Find the transaction (filtered by user/person)
+    transaction = ctx.get_by_id(Transaction, transaction_id)
     
     if not transaction:
         raise HTTPException(status_code=404, detail="Transaction not found")
     
     # Update the category
     transaction.category = request.category
-    db.commit()
-    db.refresh(transaction)
+    ctx.commit()
+    ctx.refresh(transaction)
     
     return {
         "id": transaction.id,
@@ -548,4 +528,3 @@ def update_transaction_category(
         "category": transaction.category,
         "message": "Category updated successfully"
     }
-

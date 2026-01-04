@@ -7,8 +7,7 @@ from datetime import date, datetime
 from pydantic import BaseModel
 from pathlib import Path
 
-from app.shared.database import get_db
-from app.shared.dependencies import get_user_id
+from app.shared.filtered_query import FilteredQueryContext, get_filtered_context
 from .service import ReportService
 from .models import ReportFormat, ReportType, ReportStatus
 
@@ -24,7 +23,6 @@ class GenerateReportRequest(BaseModel):
     period_start: date
     period_end: date
     title: Optional[str] = None
-    person_id: Optional[str] = None
 
 
 class ReportResponse(BaseModel):
@@ -50,8 +48,7 @@ class ReportListResponse(BaseModel):
 @router.post("/generate", response_model=ReportResponse)
 def generate_report(
     request: GenerateReportRequest,
-    db: Session = Depends(get_db),
-    user_id: str = Depends(get_user_id),
+    ctx: FilteredQueryContext = Depends(get_filtered_context),
 ):
     """
     Generate a financial report.
@@ -83,13 +80,13 @@ def generate_report(
         raise HTTPException(status_code=400, detail="period_start must be before period_end")
     
     report = ReportService.generate_report(
-        db=db,
-        user_id=user_id,
+        db=ctx.db,
+        user_id=ctx.user_id,
         report_type=report_type,
         report_format=report_format,
         period_start=request.period_start,
         period_end=request.period_end,
-        person_id=request.person_id,
+        person_id=str(ctx.person_id) if ctx.person_id else None,
         title=request.title,
     )
     
@@ -109,17 +106,17 @@ def generate_report(
 
 @router.get("/", response_model=ReportListResponse)
 def list_reports(
-    db: Session = Depends(get_db),
-    user_id: str = Depends(get_user_id),
     limit: int = Query(20, ge=1, le=100),
     include_failed: bool = Query(False),
+    ctx: FilteredQueryContext = Depends(get_filtered_context),
 ):
     """List all reports for the user."""
     reports = ReportService.get_user_reports(
-        db=db,
-        user_id=user_id,
+        db=ctx.db,
+        user_id=ctx.user_id,
         limit=limit,
         include_failed=include_failed,
+        person_id=str(ctx.person_id) if ctx.person_id else None,
     )
     
     return ReportListResponse(
@@ -145,11 +142,10 @@ def list_reports(
 @router.get("/{report_id}")
 def get_report(
     report_id: str,
-    db: Session = Depends(get_db),
-    user_id: str = Depends(get_user_id),
+    ctx: FilteredQueryContext = Depends(get_filtered_context),
 ):
     """Get report details by ID."""
-    report = ReportService.get_report(db, report_id, user_id)
+    report = ReportService.get_report(ctx.db, report_id, ctx.user_id)
     if not report:
         raise HTTPException(status_code=404, detail="Report not found")
     
@@ -173,11 +169,10 @@ def get_report(
 @router.get("/{report_id}/download")
 def download_report(
     report_id: str,
-    db: Session = Depends(get_db),
-    user_id: str = Depends(get_user_id),
+    ctx: FilteredQueryContext = Depends(get_filtered_context),
 ):
     """Download a generated report file."""
-    report = ReportService.get_report(db, report_id, user_id)
+    report = ReportService.get_report(ctx.db, report_id, ctx.user_id)
     if not report:
         raise HTTPException(status_code=404, detail="Report not found")
     
@@ -210,11 +205,10 @@ def download_report(
 @router.delete("/{report_id}")
 def delete_report(
     report_id: str,
-    db: Session = Depends(get_db),
-    user_id: str = Depends(get_user_id),
+    ctx: FilteredQueryContext = Depends(get_filtered_context),
 ):
     """Delete a report and its file."""
-    success = ReportService.delete_report(db, report_id, user_id)
+    success = ReportService.delete_report(ctx.db, report_id, ctx.user_id)
     if not success:
         raise HTTPException(status_code=404, detail="Report not found")
     
@@ -241,8 +235,7 @@ def generate_monthly_report(
     month: int = Query(..., ge=1, le=12, description="Month (1-12)"),
     year: int = Query(..., ge=2000, le=2100, description="Year"),
     report_format: str = Query("pdf", description="Output format"),
-    db: Session = Depends(get_db),
-    user_id: str = Depends(get_user_id),
+    ctx: FilteredQueryContext = Depends(get_filtered_context),
 ):
     """Quick endpoint to generate a monthly report."""
     from calendar import monthrange
@@ -257,12 +250,13 @@ def generate_monthly_report(
         raise HTTPException(status_code=400, detail="Invalid format")
     
     report = ReportService.generate_report(
-        db=db,
-        user_id=user_id,
+        db=ctx.db,
+        user_id=ctx.user_id,
         report_type=ReportType.MONTHLY_SUMMARY,
         report_format=fmt,
         period_start=period_start,
         period_end=period_end,
+        person_id=str(ctx.person_id) if ctx.person_id else None,
     )
     
     return {
@@ -280,8 +274,7 @@ def generate_custom_report(
     report_format: str = Query("pdf", description="Output format"),
     include_insights: bool = Query(True, description="Include insights section"),
     include_recurring: bool = Query(True, description="Include recurring patterns"),
-    db: Session = Depends(get_db),
-    user_id: str = Depends(get_user_id),
+    ctx: FilteredQueryContext = Depends(get_filtered_context),
 ):
     """Generate a custom period report with configurable sections."""
     if start_date > end_date:
@@ -293,12 +286,13 @@ def generate_custom_report(
         raise HTTPException(status_code=400, detail="Invalid format")
     
     report = ReportService.generate_report(
-        db=db,
-        user_id=user_id,
+        db=ctx.db,
+        user_id=ctx.user_id,
         report_type=ReportType.CUSTOM_PERIOD,
         report_format=fmt,
         period_start=start_date,
         period_end=end_date,
+        person_id=str(ctx.person_id) if ctx.person_id else None,
     )
     
     return {
@@ -307,4 +301,3 @@ def generate_custom_report(
         "status": report.status,
         "download_url": f"/api/reports/{report.id}/download",
     }
-

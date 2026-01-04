@@ -5,8 +5,7 @@ from typing import Optional, List
 from datetime import date
 from pydantic import BaseModel
 
-from app.shared.database import get_db
-from app.shared.dependencies import get_user_id
+from app.shared.filtered_query import FilteredQueryContext, get_filtered_context
 from .service import InsightsService
 from .models import InsightType, InsightSeverity
 
@@ -62,10 +61,8 @@ class SavedInsightResponse(BaseModel):
 
 @router.get("/generate")
 def generate_insights(
-    db: Session = Depends(get_db),
-    user_id: str = Depends(get_user_id),
     period_days: int = Query(30, ge=7, le=365, description="Analysis period in days"),
-    person_id: Optional[str] = Query(None, description="Filter by person ID"),
+    ctx: FilteredQueryContext = Depends(get_filtered_context),
 ):
     """
     Generate financial insights for the user.
@@ -77,10 +74,10 @@ def generate_insights(
     insight generation without requiring LLM calls.
     """
     report = InsightsService.generate_insights(
-        db=db,
-        user_id=user_id,
+        db=ctx.db,
+        user_id=ctx.user_id,
         period_days=period_days,
-        person_id=person_id,
+        person_id=str(ctx.person_id) if ctx.person_id else None,
     )
     
     return report.to_dict()
@@ -88,10 +85,8 @@ def generate_insights(
 
 @router.get("/spending-trends")
 def get_spending_trends(
-    db: Session = Depends(get_db),
-    user_id: str = Depends(get_user_id),
     period_days: int = Query(30, ge=7, le=365),
-    person_id: Optional[str] = Query(None),
+    ctx: FilteredQueryContext = Depends(get_filtered_context),
 ):
     """
     Get spending trend analysis.
@@ -100,10 +95,10 @@ def get_spending_trends(
     and provides trend insights.
     """
     report = InsightsService.generate_insights(
-        db=db,
-        user_id=user_id,
+        db=ctx.db,
+        user_id=ctx.user_id,
         period_days=period_days,
-        person_id=person_id,
+        person_id=str(ctx.person_id) if ctx.person_id else None,
     )
     
     trend_insights = [
@@ -120,10 +115,8 @@ def get_spending_trends(
 
 @router.get("/categories")
 def get_category_insights(
-    db: Session = Depends(get_db),
-    user_id: str = Depends(get_user_id),
     period_days: int = Query(30, ge=7, le=365),
-    person_id: Optional[str] = Query(None),
+    ctx: FilteredQueryContext = Depends(get_filtered_context),
 ):
     """
     Get category-specific spending insights.
@@ -132,10 +125,10 @@ def get_category_insights(
     identifies dominant spending areas.
     """
     report = InsightsService.generate_insights(
-        db=db,
-        user_id=user_id,
+        db=ctx.db,
+        user_id=ctx.user_id,
         period_days=period_days,
-        person_id=person_id,
+        person_id=str(ctx.person_id) if ctx.person_id else None,
     )
     
     category_insights = [
@@ -151,10 +144,8 @@ def get_category_insights(
 
 @router.get("/anomalies")
 def get_anomalies(
-    db: Session = Depends(get_db),
-    user_id: str = Depends(get_user_id),
     period_days: int = Query(30, ge=7, le=365),
-    person_id: Optional[str] = Query(None),
+    ctx: FilteredQueryContext = Depends(get_filtered_context),
 ):
     """
     Get detected spending anomalies.
@@ -163,10 +154,10 @@ def get_anomalies(
     from normal spending patterns.
     """
     report = InsightsService.generate_insights(
-        db=db,
-        user_id=user_id,
+        db=ctx.db,
+        user_id=ctx.user_id,
         period_days=period_days,
-        person_id=person_id,
+        person_id=str(ctx.person_id) if ctx.person_id else None,
     )
     
     anomaly_insights = [
@@ -182,10 +173,8 @@ def get_anomalies(
 
 @router.get("/savings")
 def get_savings_opportunities(
-    db: Session = Depends(get_db),
-    user_id: str = Depends(get_user_id),
     period_days: int = Query(30, ge=7, le=365),
-    person_id: Optional[str] = Query(None),
+    ctx: FilteredQueryContext = Depends(get_filtered_context),
 ):
     """
     Get savings opportunities.
@@ -194,10 +183,10 @@ def get_savings_opportunities(
     provides actionable recommendations.
     """
     report = InsightsService.generate_insights(
-        db=db,
-        user_id=user_id,
+        db=ctx.db,
+        user_id=ctx.user_id,
         period_days=period_days,
-        person_id=person_id,
+        person_id=str(ctx.person_id) if ctx.person_id else None,
     )
     
     savings_insights = [
@@ -213,10 +202,8 @@ def get_savings_opportunities(
 
 @router.post("/save")
 def save_current_insights(
-    db: Session = Depends(get_db),
-    user_id: str = Depends(get_user_id),
     period_days: int = Query(30),
-    person_id: Optional[str] = Query(None),
+    ctx: FilteredQueryContext = Depends(get_filtered_context),
 ):
     """
     Save current insights to database.
@@ -224,17 +211,17 @@ def save_current_insights(
     Persists the generated insights for historical tracking.
     """
     report = InsightsService.generate_insights(
-        db=db,
-        user_id=user_id,
+        db=ctx.db,
+        user_id=ctx.user_id,
         period_days=period_days,
-        person_id=person_id,
+        person_id=str(ctx.person_id) if ctx.person_id else None,
     )
     
     saved = InsightsService.save_insights(
-        db=db,
-        user_id=user_id,
+        db=ctx.db,
+        user_id=ctx.user_id,
         report=report,
-        person_id=person_id,
+        person_id=str(ctx.person_id) if ctx.person_id else None,
     )
     
     return {
@@ -245,10 +232,9 @@ def save_current_insights(
 
 @router.get("/history")
 def get_saved_insights(
-    db: Session = Depends(get_db),
-    user_id: str = Depends(get_user_id),
     include_dismissed: bool = Query(False),
     limit: int = Query(50, ge=1, le=200),
+    ctx: FilteredQueryContext = Depends(get_filtered_context),
 ):
     """
     Get saved insights from database.
@@ -256,10 +242,11 @@ def get_saved_insights(
     Returns previously saved insights with their creation timestamps.
     """
     insights = InsightsService.get_saved_insights(
-        db=db,
-        user_id=user_id,
+        db=ctx.db,
+        user_id=ctx.user_id,
         include_dismissed=include_dismissed,
         limit=limit,
+        person_id=str(ctx.person_id) if ctx.person_id else None,
     )
     
     return {
@@ -283,18 +270,16 @@ def get_saved_insights(
 @router.post("/{insight_id}/dismiss")
 def dismiss_insight(
     insight_id: str,
-    db: Session = Depends(get_db),
-    user_id: str = Depends(get_user_id),
+    ctx: FilteredQueryContext = Depends(get_filtered_context),
 ):
     """
     Dismiss an insight.
     
     Marks an insight as dismissed so it won't show up in future queries.
     """
-    success = InsightsService.dismiss_insight(db, user_id, insight_id)
+    success = InsightsService.dismiss_insight(ctx.db, ctx.user_id, insight_id)
     
     if not success:
         raise HTTPException(status_code=404, detail="Insight not found")
     
     return {"message": "Insight dismissed"}
-

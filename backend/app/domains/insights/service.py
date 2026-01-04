@@ -148,7 +148,7 @@ class InsightsService:
         )
         
         if person_id:
-            query = query.filter(Transaction.person_id == person_id)
+            query = query.filter(Transaction.person_id == int(person_id))
         
         return query.order_by(Transaction.date).all()
     
@@ -516,9 +516,13 @@ class InsightsService:
         user_id: str,
         include_dismissed: bool = False,
         limit: int = 50,
+        person_id: Optional[str] = None,
     ) -> List[Insight]:
         """Get saved insights from database."""
         query = db.query(Insight).filter(Insight.user_id == user_id)
+        
+        if person_id:
+            query = query.filter(Insight.person_id == int(person_id))
         
         if not include_dismissed:
             query = query.filter(Insight.is_dismissed == False)

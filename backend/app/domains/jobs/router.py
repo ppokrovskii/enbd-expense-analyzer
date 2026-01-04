@@ -5,8 +5,7 @@ from typing import List, Optional
 from pydantic import BaseModel
 from datetime import datetime
 
-from app.shared.database import get_db
-from app.shared.dependencies import get_user_id
+from app.shared.filtered_query import FilteredQueryContext, get_filtered_context
 from .service import JobService
 from .models import BackgroundJob
 
@@ -50,9 +49,10 @@ class TriggerJobResponse(BaseModel):
 
 
 @router.post("/recategorize", response_model=TriggerJobResponse)
-def trigger_recategorization(db: Session = Depends(get_db), user_id: str = Depends(get_user_id)):
+def trigger_recategorization(ctx: FilteredQueryContext = Depends(get_filtered_context)):
     """Trigger a background job to recategorize all transactions."""
-    job_id = JobService.create_recategorization_job(db, user_id)
+    # TODO: Add person_id support to JobService.create_recategorization_job
+    job_id = JobService.create_recategorization_job(ctx.db, ctx.user_id)
     return TriggerJobResponse(job_id=job_id, status="pending")
 
 
@@ -73,8 +73,7 @@ class ApplyRulesResponse(BaseModel):
 def apply_rules(
     request: ApplyRulesRequest,
     sync: bool = False,
-    db: Session = Depends(get_db),
-    user_id: str = Depends(get_user_id)
+    ctx: FilteredQueryContext = Depends(get_filtered_context)
 ):
     """
     Apply specific rules to uncategorized transactions.
@@ -100,11 +99,14 @@ def apply_rules(
             detail="At least one rule_id is required"
         )
     
-    job_id = JobService.create_rule_apply_job(db, user_id, request.rule_ids, run_sync=sync)
+    # TODO: Add person_id support to JobService.create_rule_apply_job
+    job_id = JobService.create_rule_apply_job(
+        ctx.db, ctx.user_id, request.rule_ids, run_sync=sync
+    )
     
     # If sync, get the final status
     if sync:
-        job = JobService.get_job_status(db, job_id)
+        job = JobService.get_job_status(ctx.db, job_id)
         return ApplyRulesResponse(
             job_id=job_id,
             status=job.status if job else "unknown",
@@ -121,19 +123,18 @@ def apply_rules(
 
 
 @router.get("/{job_id}", response_model=JobResponse)
-def get_job_status(job_id: str, db: Session = Depends(get_db), user_id: str = Depends(get_user_id)):
+def get_job_status(job_id: str, ctx: FilteredQueryContext = Depends(get_filtered_context)):
     """Get the current status of a background job."""
-    job = JobService.get_job_status(db, job_id)
+    job = JobService.get_job_status(ctx.db, job_id)
     if not job:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
-    if job.user_id != user_id:
+    if job.user_id != ctx.user_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
     return JobResponse.from_model(job)
 
 
 @router.get("/", response_model=List[JobResponse])
-def list_user_jobs(limit: int = 20, db: Session = Depends(get_db), user_id: str = Depends(get_user_id)):
+def list_user_jobs(limit: int = 20, ctx: FilteredQueryContext = Depends(get_filtered_context)):
     """List recent background jobs for the current user."""
-    jobs = JobService.get_user_jobs(db, user_id, limit=limit)
+    jobs = JobService.get_user_jobs(ctx.db, ctx.user_id, limit=limit)
     return [JobResponse.from_model(job) for job in jobs]
-

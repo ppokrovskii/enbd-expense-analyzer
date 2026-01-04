@@ -5,8 +5,7 @@ from typing import Optional, List
 from datetime import date
 from pydantic import BaseModel
 
-from app.shared.database import get_db
-from app.shared.dependencies import get_user_id
+from app.shared.filtered_query import FilteredQueryContext, get_filtered_context
 from .service import RecurringDetectionService
 from .models import Frequency, RecurringGroup
 
@@ -58,11 +57,9 @@ class MonthlyTotalResponse(BaseModel):
 
 @router.get("/detect", response_model=RecurringDetectionResponse)
 def detect_recurring_patterns(
-    db: Session = Depends(get_db),
-    user_id: str = Depends(get_user_id),
     date_from: Optional[date] = Query(None, description="Start date for analysis"),
     date_to: Optional[date] = Query(None, description="End date for analysis"),
-    person_id: Optional[str] = Query(None, description="Filter by person ID"),
+    ctx: FilteredQueryContext = Depends(get_filtered_context),
 ):
     """
     Detect recurring transaction patterns.
@@ -79,22 +76,18 @@ def detect_recurring_patterns(
     - Whether the subscription might be "forgotten"
     """
     result = RecurringDetectionService.detect_patterns(
-        db=db,
-        user_id=user_id,
+        db=ctx.db,
+        user_id=ctx.user_id,
         date_from=date_from,
         date_to=date_to,
-        person_id=person_id
+        person_id=str(ctx.person_id) if ctx.person_id else None
     )
     
     return result.to_dict()
 
 
 @router.get("/monthly-total", response_model=MonthlyTotalResponse)
-def get_monthly_recurring_total(
-    db: Session = Depends(get_db),
-    user_id: str = Depends(get_user_id),
-    person_id: Optional[str] = Query(None, description="Filter by person ID"),
-):
+def get_monthly_recurring_total(ctx: FilteredQueryContext = Depends(get_filtered_context)):
     """
     Get the total estimated monthly recurring expenses.
     
@@ -102,20 +95,16 @@ def get_monthly_recurring_total(
     patterns, adjusting weekly/quarterly/yearly amounts to monthly.
     """
     total = RecurringDetectionService.get_monthly_recurring_total(
-        db=db,
-        user_id=user_id,
-        person_id=person_id
+        db=ctx.db,
+        user_id=ctx.user_id,
+        person_id=str(ctx.person_id) if ctx.person_id else None
     )
     
     return {"monthly_total": total, "currency": "AED"}
 
 
 @router.get("/forgotten")
-def get_forgotten_subscriptions(
-    db: Session = Depends(get_db),
-    user_id: str = Depends(get_user_id),
-    person_id: Optional[str] = Query(None, description="Filter by person ID"),
-):
+def get_forgotten_subscriptions(ctx: FilteredQueryContext = Depends(get_filtered_context)):
     """
     Get potentially forgotten subscriptions.
     
@@ -123,9 +112,9 @@ def get_forgotten_subscriptions(
     which might indicate cancelled subscriptions or billing issues.
     """
     result = RecurringDetectionService.detect_patterns(
-        db=db,
-        user_id=user_id,
-        person_id=person_id
+        db=ctx.db,
+        user_id=ctx.user_id,
+        person_id=str(ctx.person_id) if ctx.person_id else None
     )
     
     forgotten = [g.to_dict() for g in result.recurring_groups if g.forgotten]
@@ -138,11 +127,7 @@ def get_forgotten_subscriptions(
 
 
 @router.post("/save")
-def save_detected_patterns(
-    db: Session = Depends(get_db),
-    user_id: str = Depends(get_user_id),
-    person_id: Optional[str] = Query(None, description="Associate with person ID"),
-):
+def save_detected_patterns(ctx: FilteredQueryContext = Depends(get_filtered_context)):
     """
     Save detected recurring patterns to database.
     
@@ -150,16 +135,16 @@ def save_detected_patterns(
     Useful for monitoring changes in recurring expenses.
     """
     result = RecurringDetectionService.detect_patterns(
-        db=db,
-        user_id=user_id,
-        person_id=person_id
+        db=ctx.db,
+        user_id=ctx.user_id,
+        person_id=str(ctx.person_id) if ctx.person_id else None
     )
     
     saved = RecurringDetectionService.save_recurring_groups(
-        db=db,
-        user_id=user_id,
+        db=ctx.db,
+        user_id=ctx.user_id,
         result=result,
-        person_id=person_id
+        person_id=str(ctx.person_id) if ctx.person_id else None
     )
     
     return {
@@ -170,16 +155,15 @@ def save_detected_patterns(
 
 @router.get("/history")
 def get_saved_recurring_patterns(
-    db: Session = Depends(get_db),
-    user_id: str = Depends(get_user_id),
     include_forgotten: bool = Query(True, description="Include forgotten patterns"),
+    ctx: FilteredQueryContext = Depends(get_filtered_context),
 ):
     """
     Get saved recurring patterns from database.
     
     Returns previously saved recurring patterns with their historical data.
     """
-    query = db.query(RecurringGroup).filter(RecurringGroup.user_id == user_id)
+    query = ctx.query(RecurringGroup)
     
     if not include_forgotten:
         query = query.filter(RecurringGroup.forgotten == False)
@@ -204,4 +188,3 @@ def get_saved_recurring_patterns(
         ],
         "count": len(groups)
     }
-

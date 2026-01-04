@@ -4,8 +4,7 @@ from sqlalchemy.orm import Session
 from typing import List, Optional
 from pydantic import BaseModel
 
-from app.shared.database import get_db
-from app.shared.dependencies import get_user_id, get_person_id
+from app.shared.filtered_query import FilteredQueryContext, get_filtered_context
 from .service import ChatService
 
 
@@ -114,12 +113,10 @@ class SessionDetailResponse(BaseModel):
 @router.post("/sessions", response_model=SessionResponse, status_code=status.HTTP_201_CREATED)
 def create_session(
     request: CreateSessionRequest, 
-    db: Session = Depends(get_db), 
-    user_id: str = Depends(get_user_id),
-    person_id: Optional[int] = Depends(get_person_id)
+    ctx: FilteredQueryContext = Depends(get_filtered_context)
 ):
     """Create a new chat session."""
-    session = ChatService.create_session(db, user_id, request.title, person_id)
+    session = ChatService.create_session(ctx.db, ctx.user_id, request.title, ctx.person_id)
     return SessionResponse(
         id=str(session.id),
         title=session.title,
@@ -130,33 +127,35 @@ def create_session(
 
 
 @router.get("/sessions", response_model=List[SessionResponse])
-def list_sessions(
-    db: Session = Depends(get_db), 
-    user_id: str = Depends(get_user_id),
-    person_id: Optional[int] = Depends(get_person_id)
-):
+def list_sessions(ctx: FilteredQueryContext = Depends(get_filtered_context)):
     """List all chat sessions for the current user and active person."""
-    sessions = ChatService.list_sessions(db, user_id, person_id)
+    sessions = ChatService.list_sessions(ctx.db, ctx.user_id, ctx.person_id)
     return [SessionResponse(**session) for session in sessions]
 
 
 @router.get("/sessions/{session_id}", response_model=SessionDetailResponse)
-def get_session(session_id: str, db: Session = Depends(get_db), user_id: str = Depends(get_user_id)):
+def get_session(session_id: str, ctx: FilteredQueryContext = Depends(get_filtered_context)):
     """Get a specific chat session with its messages and context."""
-    session = ChatService.get_session(db, session_id, user_id)
+    # TODO: Add person_id support to ChatService.get_session
+    session = ChatService.get_session(ctx.db, session_id, ctx.user_id)
     if not session:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Chat session not found")
     return SessionDetailResponse(**session)
 
 
 @router.put("/sessions/{session_id}", response_model=SessionResponse)
-def update_session(session_id: str, request: UpdateSessionRequest, db: Session = Depends(get_db), user_id: str = Depends(get_user_id)):
+def update_session(
+    session_id: str, 
+    request: UpdateSessionRequest, 
+    ctx: FilteredQueryContext = Depends(get_filtered_context)
+):
     """Update a chat session's title."""
-    session = ChatService.update_session(db, session_id, user_id, request.title)
+    # TODO: Add person_id support to ChatService.update_session
+    session = ChatService.update_session(ctx.db, session_id, ctx.user_id, request.title)
     if not session:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Chat session not found")
     
-    sessions_list = ChatService.list_sessions(db, user_id)
+    sessions_list = ChatService.list_sessions(ctx.db, ctx.user_id, ctx.person_id)
     message_count = next((s['message_count'] for s in sessions_list if s['id'] == session_id), 0)
     
     return SessionResponse(
@@ -169,20 +168,28 @@ def update_session(session_id: str, request: UpdateSessionRequest, db: Session =
 
 
 @router.delete("/sessions/{session_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_session(session_id: str, db: Session = Depends(get_db), user_id: str = Depends(get_user_id)):
+def delete_session(session_id: str, ctx: FilteredQueryContext = Depends(get_filtered_context)):
     """Delete a chat session."""
-    deleted = ChatService.delete_session(db, session_id, user_id)
+    # TODO: Add person_id support to ChatService.delete_session
+    deleted = ChatService.delete_session(ctx.db, session_id, ctx.user_id)
     if not deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Chat session not found")
     return None
 
 
 @router.post("/sessions/{session_id}/context", response_model=ContextResponse)
-def add_context(session_id: str, request: AddContextRequest, db: Session = Depends(get_db), user_id: str = Depends(get_user_id)):
+def add_context(
+    session_id: str, 
+    request: AddContextRequest, 
+    ctx: FilteredQueryContext = Depends(get_filtered_context)
+):
     """Add transaction context to a chat session."""
     try:
+        # TODO: Add person_id support to ChatService.add_context
         context_info = ChatService.add_context(
-            db=db, session_id=session_id, user_id=user_id,
+            db=ctx.db, 
+            session_id=session_id, 
+            user_id=ctx.user_id,
             transaction_filters=request.model_dump(exclude_none=True)
         )
         return ContextResponse(**context_info)
@@ -191,9 +198,10 @@ def add_context(session_id: str, request: AddContextRequest, db: Session = Depen
 
 
 @router.get("/sessions/{session_id}/context", response_model=ContextInfoResponse)
-def get_context(session_id: str, db: Session = Depends(get_db), user_id: str = Depends(get_user_id)):
+def get_context(session_id: str, ctx: FilteredQueryContext = Depends(get_filtered_context)):
     """Get context for a chat session."""
-    context = ChatService.get_context(db, session_id, user_id)
+    # TODO: Add person_id support to ChatService.get_context
+    context = ChatService.get_context(ctx.db, session_id, ctx.user_id)
     if context is None:
         return ContextInfoResponse(transaction_filters=None, transaction_count=None, summary=None)
     
@@ -207,26 +215,45 @@ def get_context(session_id: str, db: Session = Depends(get_db), user_id: str = D
 
 
 @router.delete("/sessions/{session_id}/context", status_code=status.HTTP_204_NO_CONTENT)
-def remove_context(session_id: str, db: Session = Depends(get_db), user_id: str = Depends(get_user_id)):
+def remove_context(session_id: str, ctx: FilteredQueryContext = Depends(get_filtered_context)):
     """Remove context from a chat session."""
-    removed = ChatService.remove_context(db, session_id, user_id)
+    # TODO: Add person_id support to ChatService.remove_context
+    removed = ChatService.remove_context(ctx.db, session_id, ctx.user_id)
     if not removed:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Context not found")
     return None
 
 
 @router.post("/sessions/context/estimate", response_model=ContextEstimateResponse)
-def estimate_context(request: ContextEstimateRequest, db: Session = Depends(get_db), user_id: str = Depends(get_user_id)):
+def estimate_context(
+    request: ContextEstimateRequest, 
+    ctx: FilteredQueryContext = Depends(get_filtered_context)
+):
     """Estimate the size of a context before adding it."""
-    estimate = ChatService.estimate_context(db=db, user_id=user_id, transaction_filters=request.model_dump(exclude_none=True))
+    # TODO: Add person_id support to ChatService.estimate_context
+    estimate = ChatService.estimate_context(
+        db=ctx.db, 
+        user_id=ctx.user_id, 
+        transaction_filters=request.model_dump(exclude_none=True)
+    )
     return ContextEstimateResponse(**estimate)
 
 
 @router.post("/sessions/{session_id}/messages", response_model=SendMessageResponse)
-def send_message(session_id: str, request: SendMessageRequest, db: Session = Depends(get_db), user_id: str = Depends(get_user_id)):
+def send_message(
+    session_id: str, 
+    request: SendMessageRequest, 
+    ctx: FilteredQueryContext = Depends(get_filtered_context)
+):
     """Send a message to the AI assistant in a chat session."""
     try:
-        result = ChatService.send_message(db=db, session_id=session_id, user_id=user_id, message=request.message)
+        # TODO: Add person_id support to ChatService.send_message
+        result = ChatService.send_message(
+            db=ctx.db, 
+            session_id=session_id, 
+            user_id=ctx.user_id, 
+            message=request.message
+        )
         return SendMessageResponse(
             response=result["response"],
             session_title=result["session_title"],
@@ -236,4 +263,3 @@ def send_message(session_id: str, request: SendMessageRequest, db: Session = Dep
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error processing message: {str(e)}")
-
