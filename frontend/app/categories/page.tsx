@@ -273,16 +273,17 @@ export default function CategoriesPage() {
 
   return (
     <div className="h-screen flex flex-col">
-      {/* Page Title - Same style as transactions page */}
-      <div className="px-6 pt-6 pb-4 bg-[var(--color-bg-primary)]">
-        <h1 className="text-title text-[var(--color-text-primary)]">Category Management</h1>
-        <p className="text-body text-[var(--color-text-secondary)] mt-1">
-          Manage categorization rules and organize merchants by category
-        </p>
-      </div>
+      {/* Top Section - Matches Transactions Page Layout */}
+      <div className="space-y-6 p-6 pb-4">
+        {/* Page Title */}
+        <div>
+          <h1 className="text-title text-[var(--color-text-primary)]">Category Management</h1>
+          <p className="text-body text-[var(--color-text-secondary)] mt-1">
+            Manage categorization rules and organize merchants by category
+          </p>
+        </div>
 
-      {/* Quick Filters Card - Same style as transactions page */}
-      <div className="px-6 pb-4">
+        {/* Date and Merchant Filters - Same card style as Transactions */}
         <div className="card p-6 space-y-4">
           {/* Quick Date Filters */}
           <div>
@@ -342,7 +343,7 @@ export default function CategoriesPage() {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {/* Date Range */}
             <div>
               <label className="block text-caption text-[var(--color-text-secondary)] mb-2">
@@ -373,78 +374,69 @@ export default function CategoriesPage() {
               </label>
               <input
                 type="text"
-                placeholder="Search merchants..."
+                placeholder="Search merchant..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="input"
               />
             </div>
-            {/* Action Buttons */}
-            <div className="flex items-end gap-2">
-              <button
-                onClick={handleClearDateFilters}
-                className="text-caption font-medium text-[var(--color-text-secondary)] hover:text-[var(--color-primary)] transition-apple"
-              >
-                Clear filters
-              </button>
-            </div>
+          </div>
+
+          {/* Category Filters - Full width section similar to Transactions Accounts section */}
+          <div className="pt-4 border-t border-[var(--color-border-light)]">
+            <CategoryFilters
+              categories={categories}
+              selectedCategoryIds={selectedCategoryIds}
+              onCategorySelect={setSelectedCategoryIds}
+              onCategoryUpdate={handleCategoryUpdate}
+            />
           </div>
         </div>
-      </div>
 
-      {/* Category Filters and Actions */}
-      <div className="border-b border-[var(--color-border)] bg-[var(--color-bg-primary)]">
-        <div className="px-6 py-4">
-          <CategoryFilters
-            categories={categories}
-            selectedCategoryIds={selectedCategoryIds}
-            onCategorySelect={setSelectedCategoryIds}
-            onCategoryUpdate={handleCategoryUpdate}
-          />
-          <div className="flex items-center gap-4 mt-4">
-            <div className="relative group">
-              <button
-                onClick={handleRecategorizeAll}
-                disabled={isRecategorizing}
-                className="btn btn-secondary flex items-center gap-2 whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
-                title="Re-apply all rules to recategorize transactions"
-              >
-                {isRecategorizing ? (
-                  <>
-                    <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    Recategorizing...
-                  </>
-                ) : (
-                  <>
-                    <svg className="h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                    </svg>
-                    Recategorize All
-                  </>
-                )}
-              </button>
-            </div>
-            <div className="relative group">
-              <button
-                onClick={handleAICategorize}
-                disabled={selectedMerchants.size === 0}
-                className="btn btn-primary flex items-center gap-2 whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <SparkleIcon size={16} />
-                {selectedMerchants.size > 0 
-                  ? `AI Categorize (${selectedMerchants.size})` 
-                  : 'AI Categorize'}
-              </button>
-              {selectedMerchants.size === 0 && (
-                <div className="hidden group-hover:block absolute bottom-full right-0 mb-2 w-64 p-3 bg-gray-900 text-white text-caption rounded-lg shadow-lg z-50">
-                  <div className="absolute bottom-0 right-4 transform translate-y-1/2 rotate-45 w-2 h-2 bg-gray-900"></div>
-                  Select one or more merchants to categorize them with AI
-                </div>
+        {/* Action Buttons */}
+        <div className="flex items-center gap-4">
+          <div className="relative group">
+            <button
+              onClick={handleRecategorizeAll}
+              disabled={isRecategorizing}
+              className="btn btn-secondary flex items-center gap-2 whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Re-apply all rules to recategorize transactions"
+            >
+              {isRecategorizing ? (
+                <>
+                  <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Recategorizing...
+                </>
+              ) : (
+                <>
+                  <svg className="h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  Recategorize All
+                </>
               )}
-            </div>
+            </button>
+          </div>
+          <div className="relative group">
+            <button
+              onClick={handleAICategorize}
+              disabled={selectedMerchants.size === 0}
+              className="btn btn-primary flex items-center gap-2 whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <SparkleIcon size={16} />
+              {selectedMerchants.size > 0 
+                ? `AI Categorize (${selectedMerchants.size})` 
+                : 'AI Categorize'}
+            </button>
+            {selectedMerchants.size === 0 && (
+              <div className="hidden group-hover:block absolute bottom-full right-0 mb-2 w-64 p-3 bg-gray-900 text-white text-caption rounded-lg shadow-lg z-50">
+                <div className="absolute bottom-0 right-4 transform translate-y-1/2 rotate-45 w-2 h-2 bg-gray-900"></div>
+                Select one or more merchants to categorize them with AI
+              </div>
+            )}
           </div>
         </div>
       </div>
