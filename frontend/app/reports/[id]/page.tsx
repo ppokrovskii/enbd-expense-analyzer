@@ -268,6 +268,18 @@ export default function ReportEditorPage() {
   };
 
   const updateSectionContent = useCallback(async (sectionId: number, content: SectionContent) => {
+    // Optimistic update: update local state immediately
+    setReport(prev => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        sections: prev.sections.map(s =>
+          s.id === sectionId ? { ...s, content } : s
+        ),
+      };
+    });
+
+    // Save to API in background
     try {
       const response = await fetch(
         `http://localhost:8000/api/reports/${reportId}/sections/${sectionId}`,

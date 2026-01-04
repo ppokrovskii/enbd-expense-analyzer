@@ -165,16 +165,15 @@ export default function TransactionList({
   const handleAICategorizeSelected = () => {
     if (selectedMerchants.size === 0) return;
     
-    // Store merchants in sessionStorage
+    // Store merchants in sessionStorage for Rules Manager
     if (typeof window !== 'undefined') {
-      sessionStorage.setItem('ai_categorize_merchants', JSON.stringify(Array.from(selectedMerchants)));
-      sessionStorage.setItem('ai_categorize_days', '90');
-      sessionStorage.setItem('ai_categorize_referrer', 'transactions');
-      sessionStorage.setItem('ai_categorize_return_url', window.location.href);
+      sessionStorage.setItem('rules_ai_merchants', JSON.stringify(Array.from(selectedMerchants)));
+      sessionStorage.setItem('rules_ai_referrer', 'transactions');
+      sessionStorage.setItem('rules_ai_return_url', window.location.href);
     }
     
-    // Navigate to AI suggestions page
-    window.location.href = '/categories/ai-suggestions';
+    // Navigate to Rules Manager page with AI suggestions mode
+    window.location.href = '/rules?mode=ai-suggest';
   };
 
   const fetchTransactions = async (page: number, appliedFilters: FilterValues) => {

@@ -3,6 +3,7 @@
  * 
  * Features:
  * - View all categorization rules in cards
+ * - AI Suggestions mode: Generate rule suggestions for selected merchants
  * - Inline editing with live preview
  * - Conflict detection
  * - Search and filter by category
@@ -11,8 +12,8 @@
 
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect, useMemo } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { getApiHeaders } from "../utils/api";
 
 // Types
@@ -53,14 +54,41 @@ interface EditingRule extends Rule {
   isNew?: boolean;
 }
 
+interface AISuggestion {
+  merchant: string;
+  suggested_category: string;
+  suggested_pattern: string;
+  pattern_type: string;
+  transaction_count: number;
+  total_amount: number;
+  is_new_category?: boolean;
+}
+
+interface PendingSuggestion extends AISuggestion {
+  id: string;
+  edited_category: string;
+  edited_pattern: string;
+  status: "pending" | "applied" | "rejected";
+  categoryId?: number;
+}
+
 export default function RulesManagerPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const isAIMode = searchParams.get("mode") === "ai-suggest";
   
   // Data state
   const [rules, setRules] = useState<Rule[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  
+  // AI Suggestions state
+  const [aiSuggestions, setAiSuggestions] = useState<PendingSuggestion[]>([]);
+  const [aiMerchants, setAiMerchants] = useState<string[]>([]);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [appliedCount, setAppliedCount] = useState(0);
+  const [returnUrl, setReturnUrl] = useState<string | null>(null);
   
   // Filter state
   const [searchQuery, setSearchQuery] = useState("");
@@ -86,21 +114,53 @@ export default function RulesManagerPage() {
   const [hasMore, setHasMore] = useState(false);
   const [total, setTotal] = useState(0);
 
-  // Load data
+  // Initialize AI mode from sessionStorage
+  useEffect(() => {
+    if (isAIMode && typeof window !== "undefined") {
+      const merchants = sessionStorage.getItem("rules_ai_merchants");
+      const returnUrlStored = sessionStorage.getItem("rules_ai_return_url");
+      
+      if (merchants) {
+        try {
+          const parsed = JSON.parse(merchants);
+          setAiMerchants(parsed);
+        } catch (e) {
+          console.error("Failed to parse merchants", e);
+        }
+      }
+      
+      if (returnUrlStored) {
+        setReturnUrl(returnUrlStored);
+      }
+    }
+  }, [isAIMode]);
+
+  // Load categories first, then load rules or AI suggestions
   useEffect(() => {
     loadCategories();
-    loadRules();
-  }, [categoryFilter, searchQuery]);
+  }, []);
+
+  useEffect(() => {
+    if (categories.length > 0) {
+      if (isAIMode && aiMerchants.length > 0) {
+        fetchAISuggestions();
+      } else if (!isAIMode) {
+        loadRules();
+      }
+    }
+  }, [categories, categoryFilter, searchQuery, isAIMode, aiMerchants]);
 
   // Refresh when person changes
   useEffect(() => {
     const handlePersonChange = () => {
       loadCategories();
-      loadRules();
+      if (!isAIMode) {
+        loadRules();
+      }
     };
-    window.addEventListener('personChanged', handlePersonChange);
-    return () => window.removeEventListener('personChanged', handlePersonChange);
-  }, []);
+    window.addEventListener("personChanged", handlePersonChange);
+    return () => window.removeEventListener("personChanged", handlePersonChange);
+  }, [isAIMode]);
 
   const loadCategories = async () => {
     try {
@@ -137,6 +197,49 @@ export default function RulesManagerPage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load rules");
     } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchAISuggestions = async () => {
+    setAiLoading(true);
+    setError(null);
+    
+    try {
+      const response = await fetch(
+        "http://localhost:8000/api/categories/ai-bulk-suggest",
+        {
+          method: "POST",
+          headers: getApiHeaders(),
+          body: JSON.stringify({
+            days: 90,
+            level: "global",
+            merchants: aiMerchants,
+            limit: 1000,
+          }),
+        }
+      );
+
+      if (!response.ok) throw new Error("Failed to fetch AI suggestions");
+      const data = await response.json();
+      
+      const mapped: PendingSuggestion[] = data.map((s: AISuggestion, idx: number) => {
+        const categoryExists = categories.find(cat => cat.name === s.suggested_category);
+        return {
+          ...s,
+          id: `ai-${idx}`,
+          edited_category: s.suggested_category,
+          edited_pattern: s.suggested_pattern,
+          status: "pending" as const,
+          categoryId: categoryExists?.id,
+        };
+      });
+      
+      setAiSuggestions(mapped);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load AI suggestions");
+    } finally {
+      setAiLoading(false);
       setLoading(false);
     }
   };
@@ -286,7 +389,6 @@ export default function RulesManagerPage() {
     
     try {
       if (editingRule.isNew) {
-        // Create new rule
         const response = await fetch("http://localhost:8000/api/rules/", {
           method: "POST",
           headers: getApiHeaders(),
@@ -299,10 +401,8 @@ export default function RulesManagerPage() {
         });
         
         if (!response.ok) throw new Error("Failed to create rule");
-        
         showToast("Rule created successfully");
       } else {
-        // Update existing rule
         const response = await fetch(`http://localhost:8000/api/rules/${editingRule.id}`, {
           method: "PUT",
           headers: getApiHeaders(),
@@ -314,7 +414,6 @@ export default function RulesManagerPage() {
         });
         
         if (!response.ok) throw new Error("Failed to update rule");
-        
         showToast("Rule updated successfully");
       }
       
@@ -345,6 +444,93 @@ export default function RulesManagerPage() {
     }
   };
 
+  // AI Suggestion handlers
+  const handleApplySuggestion = async (suggestion: PendingSuggestion) => {
+    try {
+      // Find or create category
+      let categoryId = suggestion.categoryId;
+      
+      if (!categoryId) {
+        // Create the category first
+        const catResponse = await fetch("http://localhost:8000/api/categories/", {
+          method: "POST",
+          headers: getApiHeaders(),
+          body: JSON.stringify({ name: suggestion.edited_category, keywords: [] }),
+        });
+        
+        if (!catResponse.ok) throw new Error("Failed to create category");
+        const newCat = await catResponse.json();
+        categoryId = newCat.id;
+        
+        // Update categories list
+        setCategories(prev => [...prev, newCat]);
+      }
+      
+      // Create the rule
+      const keywords = suggestion.edited_pattern.split("|").map(k => k.trim()).filter(Boolean);
+      
+      const response = await fetch("http://localhost:8000/api/rules/", {
+        method: "POST",
+        headers: getApiHeaders(),
+        body: JSON.stringify({
+          category_id: categoryId,
+          keywords,
+          exclude_keywords: [],
+          priority: 0,
+        }),
+      });
+      
+      if (!response.ok) throw new Error("Failed to create rule");
+      
+      // Mark as applied
+      setAiSuggestions(prev => 
+        prev.map(s => s.id === suggestion.id ? { ...s, status: "applied" as const } : s)
+      );
+      setAppliedCount(prev => prev + 1);
+      showToast(`Rule created for ${suggestion.merchant}`);
+      
+      // Remove after animation
+      setTimeout(() => {
+        setAiSuggestions(prev => prev.filter(s => s.id !== suggestion.id));
+      }, 1000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to apply suggestion");
+    }
+  };
+
+  const handleRejectSuggestion = (suggestionId: string) => {
+    setAiSuggestions(prev => 
+      prev.map(s => s.id === suggestionId ? { ...s, status: "rejected" as const } : s)
+    );
+    
+    setTimeout(() => {
+      setAiSuggestions(prev => prev.filter(s => s.id !== suggestionId));
+    }, 500);
+  };
+
+  const handleApplyAll = async () => {
+    const pending = aiSuggestions.filter(s => s.status === "pending");
+    
+    for (const suggestion of pending) {
+      await handleApplySuggestion(suggestion);
+    }
+  };
+
+  const handleDone = () => {
+    // Clean up sessionStorage
+    if (typeof window !== "undefined") {
+      sessionStorage.removeItem("rules_ai_merchants");
+      sessionStorage.removeItem("rules_ai_referrer");
+      sessionStorage.removeItem("rules_ai_return_url");
+    }
+    
+    if (returnUrl) {
+      window.location.href = returnUrl;
+    } else {
+      router.push("/transactions");
+    }
+  };
+
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("en-AE", {
       style: "currency",
@@ -359,10 +545,9 @@ export default function RulesManagerPage() {
     return cat?.color || "#6366f1";
   };
 
-  // Filter rules based on search
-  const filteredRules = useMemo(() => {
-    return rules;
-  }, [rules]);
+  const filteredRules = useMemo(() => rules, [rules]);
+  const pendingSuggestions = aiSuggestions.filter(s => s.status === "pending");
+  const allProcessed = isAIMode && aiSuggestions.length === 0 && !aiLoading && appliedCount > 0;
 
   return (
     <div className="min-h-screen bg-[var(--color-bg-primary)]">
@@ -384,7 +569,7 @@ export default function RulesManagerPage() {
           <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-4 min-w-0 flex-1">
               <button
-                onClick={() => router.back()}
+                onClick={isAIMode ? handleDone : () => router.back()}
                 className="flex-shrink-0 p-2 rounded-lg hover:bg-[var(--color-bg-secondary)] transition-apple"
                 aria-label="Go back"
               >
@@ -395,68 +580,116 @@ export default function RulesManagerPage() {
               
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2 mb-1">
-                  <svg className="w-5 h-5 text-[var(--color-primary)] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-                  </svg>
+                  {isAIMode ? (
+                    <svg className="w-5 h-5 text-purple-500 flex-shrink-0" viewBox="0 0 24 24" fill="none">
+                      <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" fill="currentColor" />
+                    </svg>
+                  ) : (
+                    <svg className="w-5 h-5 text-[var(--color-primary)] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                    </svg>
+                  )}
                   <h1 className="text-lg sm:text-xl font-semibold text-[var(--color-text-primary)]">
-                    Rule Manager
+                    {isAIMode 
+                      ? `${pendingSuggestions.length} Rule Suggestion${pendingSuggestions.length !== 1 ? 's' : ''}`
+                      : "Rule Manager"
+                    }
                   </h1>
                 </div>
-                <p className="text-sm text-[var(--color-text-secondary)]">
-                  {total} rule{total !== 1 ? 's' : ''} total
-                </p>
+                {isAIMode ? (
+                  <div className="flex items-center gap-2 text-sm text-[var(--color-text-secondary)]">
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-24 h-1.5 bg-[var(--color-bg-tertiary)] rounded-full overflow-hidden">
+                        <div 
+                          className="h-full bg-purple-500 transition-all duration-500"
+                          style={{ width: `${aiMerchants.length > 0 ? (appliedCount / aiMerchants.length) * 100 : 0}%` }}
+                        />
+                      </div>
+                      <span className="text-xs font-medium">
+                        {appliedCount} of {aiMerchants.length}
+                      </span>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-sm text-[var(--color-text-secondary)]">
+                    {total} rule{total !== 1 ? 's' : ''} total
+                  </p>
+                )}
               </div>
             </div>
             
-            <button
-              onClick={startCreating}
-              disabled={editingRuleId !== null}
-              className="btn btn-primary text-sm sm:text-base disabled:opacity-50"
-            >
-              <span className="flex items-center gap-1">
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                </svg>
-                New Rule
-              </span>
-            </button>
+            {isAIMode ? (
+              <div className="flex items-center gap-2">
+                {pendingSuggestions.length > 0 && (
+                  <button
+                    onClick={handleApplyAll}
+                    className="btn btn-primary text-sm sm:text-base"
+                  >
+                    <span className="flex items-center gap-1">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                      Apply All ({pendingSuggestions.length})
+                    </span>
+                  </button>
+                )}
+                {pendingSuggestions.length === 0 && !aiLoading && (
+                  <button onClick={handleDone} className="btn btn-primary text-sm sm:text-base">
+                    Done
+                  </button>
+                )}
+              </div>
+            ) : (
+              <button
+                onClick={startCreating}
+                disabled={editingRuleId !== null}
+                className="btn btn-primary text-sm sm:text-base disabled:opacity-50"
+              >
+                <span className="flex items-center gap-1">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                  New Rule
+                </span>
+              </button>
+            )}
           </div>
           
-          {/* Filters */}
-          <div className="flex gap-3 mt-4">
-            {/* Search */}
-            <div className="relative flex-1 max-w-md">
-              <svg
-                className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-[var(--color-text-tertiary)]"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
+          {/* Filters - only show in non-AI mode */}
+          {!isAIMode && (
+            <div className="flex gap-3 mt-4">
+              <div className="relative flex-1 max-w-md">
+                <svg
+                  className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-[var(--color-text-tertiary)]"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search keywords..."
+                  className="input pl-10 w-full"
+                />
+              </div>
+              
+              <select
+                value={categoryFilter || ""}
+                onChange={(e) => setCategoryFilter(e.target.value ? parseInt(e.target.value) : null)}
+                className="input w-48"
               >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search keywords..."
-                className="input pl-10 w-full"
-              />
+                <option value="">All Categories</option>
+                {categories.map((cat) => (
+                  <option key={cat.id} value={cat.id}>
+                    {cat.name}
+                  </option>
+                ))}
+              </select>
             </div>
-            
-            {/* Category filter */}
-            <select
-              value={categoryFilter || ""}
-              onChange={(e) => setCategoryFilter(e.target.value ? parseInt(e.target.value) : null)}
-              className="input w-48"
-            >
-              <option value="">All Categories</option>
-              {categories.map((cat) => (
-                <option key={cat.id} value={cat.id}>
-                  {cat.name}
-                </option>
-              ))}
-            </select>
-          </div>
+          )}
         </div>
       </div>
 
@@ -471,82 +704,295 @@ export default function RulesManagerPage() {
           </div>
         )}
 
-        {/* New Rule Card (when creating) */}
-        {editingRuleId === -1 && editingRule && (
-          <div className="mb-4">
-            <RuleCard
-              rule={editingRule}
-              editing={true}
-              categories={categories}
-              onEdit={() => {}}
-              onDelete={() => cancelEditing()}
-              onSave={saveRule}
-              onCancel={cancelEditing}
-              editingRule={editingRule}
-              setEditingRule={setEditingRule}
-              previewResults={previewResults}
-              previewLoading={previewLoading}
-              conflicts={conflicts}
-              conflictsLoading={conflictsLoading}
-              saving={saving}
-              formatCurrency={formatCurrency}
-              getCategoryColor={getCategoryColor}
-              isNew={true}
-            />
-          </div>
+        {/* AI Mode Content */}
+        {isAIMode && (
+          <>
+            {aiLoading ? (
+              <div className="flex flex-col items-center justify-center py-16">
+                <div className="relative">
+                  <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-purple-500"></div>
+                  <svg className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-6 h-6 text-purple-500" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" />
+                  </svg>
+                </div>
+                <p className="text-sm sm:text-base text-[var(--color-text-secondary)] mt-4">
+                  Analyzing merchants with AI...
+                </p>
+              </div>
+            ) : allProcessed ? (
+              <div className="text-center py-16">
+                <div className="w-20 h-20 rounded-full bg-green-50 dark:bg-green-900/30 flex items-center justify-center mx-auto mb-4">
+                  <svg className="w-10 h-10 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                </div>
+                <h2 className="text-xl font-semibold text-[var(--color-text-primary)] mb-2">
+                  All Done! ✨
+                </h2>
+                <p className="text-sm text-[var(--color-text-secondary)]">
+                  {appliedCount} rule{appliedCount !== 1 ? 's' : ''} created successfully
+                </p>
+              </div>
+            ) : aiSuggestions.length === 0 && !aiLoading ? (
+              <div className="text-center py-16">
+                <div className="w-20 h-20 rounded-full bg-[var(--color-bg-tertiary)] flex items-center justify-center mx-auto mb-4">
+                  <svg className="w-10 h-10 text-[var(--color-text-tertiary)]" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" />
+                  </svg>
+                </div>
+                <p className="text-sm sm:text-base text-[var(--color-text-secondary)]">
+                  No rule suggestions found
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {aiSuggestions.filter(s => s.status !== "rejected").map((suggestion) => (
+                  <AISuggestionCard
+                    key={suggestion.id}
+                    suggestion={suggestion}
+                    categories={categories}
+                    onApply={() => handleApplySuggestion(suggestion)}
+                    onReject={() => handleRejectSuggestion(suggestion.id)}
+                    onUpdate={(updates) => {
+                      setAiSuggestions(prev =>
+                        prev.map(s => s.id === suggestion.id ? { ...s, ...updates } : s)
+                      );
+                    }}
+                    formatCurrency={formatCurrency}
+                    getCategoryColor={getCategoryColor}
+                  />
+                ))}
+              </div>
+            )}
+          </>
         )}
 
-        {loading ? (
-          <div className="flex flex-col items-center justify-center py-16">
-            <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-[var(--color-primary)]"></div>
-            <p className="text-sm sm:text-base text-[var(--color-text-secondary)] mt-4">
-              Loading rules...
-            </p>
-          </div>
-        ) : filteredRules.length === 0 ? (
-          <div className="text-center py-16">
-            <div className="w-20 h-20 rounded-full bg-[var(--color-bg-tertiary)] flex items-center justify-center mx-auto mb-4">
-              <svg className="w-10 h-10 text-[var(--color-text-tertiary)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-              </svg>
-            </div>
-            <h2 className="text-xl font-semibold text-[var(--color-text-primary)] mb-2">
-              No rules found
-            </h2>
-            <p className="text-sm text-[var(--color-text-secondary)] mb-4">
-              {searchQuery || categoryFilter ? "Try adjusting your filters" : "Create your first categorization rule"}
-            </p>
-            {!searchQuery && !categoryFilter && (
-              <button onClick={startCreating} className="btn btn-primary">
-                Create First Rule
-              </button>
+        {/* Normal Rules Mode Content */}
+        {!isAIMode && (
+          <>
+            {/* New Rule Card (when creating) */}
+            {editingRuleId === -1 && editingRule && (
+              <div className="mb-4">
+                <RuleCard
+                  rule={editingRule}
+                  editing={true}
+                  categories={categories}
+                  onEdit={() => {}}
+                  onDelete={() => cancelEditing()}
+                  onSave={saveRule}
+                  onCancel={cancelEditing}
+                  editingRule={editingRule}
+                  setEditingRule={setEditingRule}
+                  previewResults={previewResults}
+                  previewLoading={previewLoading}
+                  conflicts={conflicts}
+                  conflictsLoading={conflictsLoading}
+                  saving={saving}
+                  formatCurrency={formatCurrency}
+                  getCategoryColor={getCategoryColor}
+                  isNew={true}
+                />
+              </div>
             )}
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {filteredRules.map((rule) => (
-              <RuleCard
-                key={rule.id}
-                rule={rule}
-                editing={editingRuleId === rule.id}
-                categories={categories}
-                onEdit={() => startEditing(rule)}
-                onDelete={() => deleteRule(rule.id)}
-                onSave={saveRule}
-                onCancel={cancelEditing}
-                editingRule={editingRuleId === rule.id ? editingRule : null}
-                setEditingRule={setEditingRule}
-                previewResults={editingRuleId === rule.id ? previewResults : []}
-                previewLoading={editingRuleId === rule.id ? previewLoading : false}
-                conflicts={editingRuleId === rule.id ? conflicts : []}
-                conflictsLoading={editingRuleId === rule.id ? conflictsLoading : false}
-                saving={saving}
-                formatCurrency={formatCurrency}
-                getCategoryColor={getCategoryColor}
-              />
-            ))}
-          </div>
+
+            {loading ? (
+              <div className="flex flex-col items-center justify-center py-16">
+                <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-[var(--color-primary)]"></div>
+                <p className="text-sm sm:text-base text-[var(--color-text-secondary)] mt-4">
+                  Loading rules...
+                </p>
+              </div>
+            ) : filteredRules.length === 0 ? (
+              <div className="text-center py-16">
+                <div className="w-20 h-20 rounded-full bg-[var(--color-bg-tertiary)] flex items-center justify-center mx-auto mb-4">
+                  <svg className="w-10 h-10 text-[var(--color-text-tertiary)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                  </svg>
+                </div>
+                <h2 className="text-xl font-semibold text-[var(--color-text-primary)] mb-2">
+                  No rules found
+                </h2>
+                <p className="text-sm text-[var(--color-text-secondary)] mb-4">
+                  {searchQuery || categoryFilter ? "Try adjusting your filters" : "Create your first categorization rule"}
+                </p>
+                {!searchQuery && !categoryFilter && (
+                  <button onClick={startCreating} className="btn btn-primary">
+                    Create First Rule
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {filteredRules.map((rule) => (
+                  <RuleCard
+                    key={rule.id}
+                    rule={rule}
+                    editing={editingRuleId === rule.id}
+                    categories={categories}
+                    onEdit={() => startEditing(rule)}
+                    onDelete={() => deleteRule(rule.id)}
+                    onSave={saveRule}
+                    onCancel={cancelEditing}
+                    editingRule={editingRuleId === rule.id ? editingRule : null}
+                    setEditingRule={setEditingRule}
+                    previewResults={editingRuleId === rule.id ? previewResults : []}
+                    previewLoading={editingRuleId === rule.id ? previewLoading : false}
+                    conflicts={editingRuleId === rule.id ? conflicts : []}
+                    conflictsLoading={editingRuleId === rule.id ? conflictsLoading : false}
+                    saving={saving}
+                    formatCurrency={formatCurrency}
+                    getCategoryColor={getCategoryColor}
+                  />
+                ))}
+              </div>
+            )}
+          </>
         )}
+      </div>
+    </div>
+  );
+}
+
+// AI Suggestion Card Component
+interface AISuggestionCardProps {
+  suggestion: PendingSuggestion;
+  categories: Category[];
+  onApply: () => void;
+  onReject: () => void;
+  onUpdate: (updates: Partial<PendingSuggestion>) => void;
+  formatCurrency: (amount: number) => string;
+  getCategoryColor: (name: string) => string;
+}
+
+function AISuggestionCard({
+  suggestion,
+  categories,
+  onApply,
+  onReject,
+  onUpdate,
+  formatCurrency,
+  getCategoryColor,
+}: AISuggestionCardProps) {
+  const isApplied = suggestion.status === "applied";
+  const categoryExists = categories.some(c => c.name === suggestion.edited_category);
+  
+  return (
+    <div
+      className={`
+        bg-[var(--color-bg-secondary)] 
+        border border-[var(--color-border)]
+        rounded-xl p-4 sm:p-5
+        transition-all duration-300 
+        hover:border-[var(--color-border-hover)]
+        ${isApplied ? "animate-success-fade-out bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800" : ""}
+      `}
+    >
+      <div className="space-y-4">
+        {/* Row 1: Merchant + Quick Actions */}
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-1">
+              <h3 className="text-base font-semibold text-[var(--color-text-primary)] break-words">
+                {suggestion.merchant}
+              </h3>
+              <a
+                href={`https://www.google.com/search?q=${encodeURIComponent(suggestion.merchant)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1 text-xs text-[var(--color-primary)] hover:text-[var(--color-primary-hover)] transition-colors flex-shrink-0"
+                title="Search in Google"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+              </a>
+            </div>
+            <p className="text-sm text-[var(--color-text-secondary)]">
+              {suggestion.transaction_count} transaction{suggestion.transaction_count !== 1 ? 's' : ''} 
+              {suggestion.total_amount > 0 && ` · ${formatCurrency(suggestion.total_amount)}`}
+            </p>
+          </div>
+
+          {/* Quick Actions */}
+          {!isApplied && (
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <button
+                onClick={onApply}
+                className="p-2 rounded-lg hover:bg-green-50 dark:hover:bg-green-900/30 text-green-600 dark:text-green-400 transition-apple"
+                title="Apply suggestion"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+              </button>
+              <button
+                onClick={onReject}
+                className="p-2 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/30 text-red-600 dark:text-red-400 transition-apple"
+                title="Reject"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Row 2: Category */}
+        <div>
+          <label className="block text-sm font-medium text-[var(--color-text-secondary)] mb-2">
+            Category
+            {!categoryExists && (
+              <span className="ml-2 text-xs text-amber-500">(will be created)</span>
+            )}
+          </label>
+          <div className="flex gap-2">
+            <select
+              value={categoryExists ? suggestion.edited_category : ""}
+              onChange={(e) => {
+                if (e.target.value) {
+                  const cat = categories.find(c => c.name === e.target.value);
+                  onUpdate({ edited_category: e.target.value, categoryId: cat?.id });
+                }
+              }}
+              disabled={isApplied}
+              className="input text-sm flex-shrink-0 w-48 disabled:opacity-60"
+            >
+              <option value="">-- Select Existing --</option>
+              {categories.map((cat) => (
+                <option key={cat.id} value={cat.name}>
+                  {cat.name}
+                </option>
+              ))}
+            </select>
+            <input
+              type="text"
+              value={suggestion.edited_category}
+              onChange={(e) => {
+                const cat = categories.find(c => c.name === e.target.value);
+                onUpdate({ edited_category: e.target.value, categoryId: cat?.id });
+              }}
+              disabled={isApplied}
+              className="input flex-1 text-sm disabled:opacity-60"
+              placeholder="Or type new category name..."
+            />
+          </div>
+        </div>
+
+        {/* Row 3: Pattern */}
+        <div>
+          <label className="block text-sm font-medium text-[var(--color-text-secondary)] mb-2">
+            Keywords <span className="text-[var(--color-text-tertiary)]">(separate with |)</span>
+          </label>
+          <input
+            type="text"
+            value={suggestion.edited_pattern}
+            onChange={(e) => onUpdate({ edited_pattern: e.target.value })}
+            disabled={isApplied}
+            className="input w-full text-sm font-mono disabled:opacity-60"
+            placeholder="keyword1 | keyword2"
+          />
+        </div>
       </div>
     </div>
   );
@@ -586,14 +1032,12 @@ function RuleCard({
   previewResults,
   previewLoading,
   conflicts,
-  conflictsLoading,
   saving,
   formatCurrency,
   getCategoryColor,
   isNew,
 }: RuleCardProps) {
   const hasErrors = conflicts.some(c => c.severity === "error");
-  const hasWarnings = conflicts.some(c => c.severity === "warning");
   
   if (editing && editingRule) {
     return (
@@ -819,4 +1263,3 @@ function RuleCard({
     </div>
   );
 }
-
