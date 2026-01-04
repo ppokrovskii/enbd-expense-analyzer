@@ -22,6 +22,29 @@ from .models import (
 router = APIRouter(prefix="/api/reports", tags=["reports"])
 
 
+# ============== Section Types (must be before /{report_id} routes) ==============
+
+@router.get("/section-types")
+def get_section_types():
+    """Get available section types."""
+    return {
+        "section_types": [
+            {
+                "value": t.value,
+                "label": ReportService.SECTION_TYPE_NAMES.get(t.value, t.value),
+                "has_ai_generate": t.value in [
+                    SectionType.RECURRING.value,
+                    SectionType.TRENDS.value,
+                    SectionType.INSIGHTS.value,
+                ],
+                "has_grouping": t.value == SectionType.EXPENSE_OVERVIEW.value,
+            }
+            for t in SectionType
+            if t != SectionType.SUMMARY  # Summary is auto-created
+        ]
+    }
+
+
 # ============== Report Endpoints ==============
 
 @router.get("/")
@@ -130,27 +153,6 @@ def duplicate_report(
 
 
 # ============== Section Endpoints ==============
-
-@router.get("/section-types")
-def get_section_types():
-    """Get available section types."""
-    return {
-        "section_types": [
-            {
-                "value": t.value,
-                "label": ReportService.SECTION_TYPE_NAMES.get(t.value, t.value),
-                "has_ai_generate": t.value in [
-                    SectionType.RECURRING.value,
-                    SectionType.TRENDS.value,
-                    SectionType.INSIGHTS.value,
-                ],
-                "has_grouping": t.value == SectionType.EXPENSE_OVERVIEW.value,
-            }
-            for t in SectionType
-            if t != SectionType.SUMMARY  # Summary is auto-created
-        ]
-    }
-
 
 @router.post("/{report_id}/sections")
 def add_section(

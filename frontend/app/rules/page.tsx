@@ -92,6 +92,16 @@ export default function RulesManagerPage() {
     loadRules();
   }, [categoryFilter, searchQuery]);
 
+  // Refresh when person changes
+  useEffect(() => {
+    const handlePersonChange = () => {
+      loadCategories();
+      loadRules();
+    };
+    window.addEventListener('personChanged', handlePersonChange);
+    return () => window.removeEventListener('personChanged', handlePersonChange);
+  }, []);
+
   const loadCategories = async () => {
     try {
       const response = await fetch("http://localhost:8000/api/categories/", {
