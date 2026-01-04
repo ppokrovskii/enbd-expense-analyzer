@@ -135,20 +135,27 @@ export default function RulesManagerPage() {
     }
   }, [isAIMode]);
 
-  // Load categories first, then load rules or AI suggestions
+  // Load categories and then rules/suggestions
   useEffect(() => {
-    loadCategories();
-  }, []);
-
-  useEffect(() => {
-    if (categories.length > 0) {
+    const init = async () => {
+      await loadCategories();
       if (isAIMode && aiMerchants.length > 0) {
-        fetchAISuggestions();
+        await fetchAISuggestions();
       } else if (!isAIMode) {
-        loadRules();
+        await loadRules();
+      } else {
+        setLoading(false);
       }
+    };
+    init();
+  }, [isAIMode, aiMerchants]);
+
+  // Reload rules when filters change (non-AI mode only)
+  useEffect(() => {
+    if (!isAIMode && !loading) {
+      loadRules();
     }
-  }, [categories, categoryFilter, searchQuery, isAIMode, aiMerchants]);
+  }, [categoryFilter, searchQuery]);
 
   // Refresh when person changes
   useEffect(() => {
@@ -167,11 +174,17 @@ export default function RulesManagerPage() {
       const response = await fetch("http://localhost:8000/api/categories/", {
         headers: getApiHeaders(),
       });
-      if (!response.ok) throw new Error("Failed to load categories");
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("Categories API error:", response.status, errorText);
+        throw new Error("Failed to load categories");
+      }
       const data = await response.json();
+      console.log("Loaded categories:", data.length);
       setCategories(data);
     } catch (err) {
       console.error("Error loading categories:", err);
+      setError(err instanceof Error ? err.message : "Failed to load categories");
     }
   };
 

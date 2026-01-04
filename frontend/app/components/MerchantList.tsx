@@ -198,16 +198,15 @@ export default function MerchantList({
   const handleAICategorize = () => {
     if (selectedMerchants.size === 0) return;
     
-    // Store merchants in sessionStorage
+    // Store merchants in sessionStorage for Rules Manager
     if (typeof window !== 'undefined') {
-      sessionStorage.setItem('ai_categorize_merchants', JSON.stringify(Array.from(selectedMerchants)));
-      sessionStorage.setItem('ai_categorize_days', '90');
-      sessionStorage.setItem('ai_categorize_referrer', 'merchants');
-      sessionStorage.setItem('ai_categorize_return_url', window.location.href);
+      sessionStorage.setItem('rules_ai_merchants', JSON.stringify(Array.from(selectedMerchants)));
+      sessionStorage.setItem('rules_ai_referrer', 'merchants');
+      sessionStorage.setItem('rules_ai_return_url', window.location.href);
     }
     
-    // Navigate to AI suggestions page
-    window.location.href = '/categories/ai-suggestions';
+    // Navigate to Rules Manager with AI suggestions mode
+    window.location.href = '/rules?mode=ai-suggest';
   };
 
   const formatDate = (dateStr: string) => {

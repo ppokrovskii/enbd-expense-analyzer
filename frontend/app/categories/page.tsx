@@ -173,12 +173,13 @@ export default function CategoriesPage() {
     if (selectedMerchants.size === 0) return;
     
     // Store merchant list in sessionStorage to pass to AI suggestions page
-    sessionStorage.setItem('ai_categorize_merchants', JSON.stringify(Array.from(selectedMerchants)));
-    sessionStorage.setItem('ai_categorize_start_date', dateFilters.startDate);
-    sessionStorage.setItem('ai_categorize_end_date', dateFilters.endDate);
+    // Store merchants in sessionStorage for Rules Manager
+    sessionStorage.setItem('rules_ai_merchants', JSON.stringify(Array.from(selectedMerchants)));
+    sessionStorage.setItem('rules_ai_referrer', 'categories');
+    sessionStorage.setItem('rules_ai_return_url', window.location.href);
     
-    // Navigate to AI suggestions page
-    router.push('/categories/ai-suggestions');
+    // Navigate to Rules Manager with AI suggestions mode
+    router.push('/rules?mode=ai-suggest');
   };
 
   const handleRecategorizeAll = async () => {

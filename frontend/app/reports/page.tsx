@@ -367,11 +367,14 @@ function ReportCard({
   formatDate,
 }: ReportCardProps) {
   return (
-    <div className="card p-4 hover:shadow-md transition-shadow">
+    <div 
+      className="card p-4 hover:shadow-md transition-shadow cursor-pointer group"
+      onClick={() => !isRenaming && onOpen()}
+    >
       <div className="flex items-center justify-between">
         <div className="flex-1 min-w-0">
           {isRenaming ? (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
               <input
                 type="text"
                 value={renameValue}
@@ -401,36 +404,18 @@ function ReportCard({
               </button>
             </div>
           ) : (
-            <button
-              onClick={onOpen}
-              className="text-left group"
-            >
+            <>
               <h3 className="text-body font-semibold text-[var(--color-text-primary)] group-hover:text-[var(--color-primary)] transition-colors truncate">
                 {report.name}
               </h3>
-            </button>
+            </>
           )}
-          <div className="flex items-center gap-4 mt-1">
-            <span className="text-caption text-[var(--color-text-tertiary)]">
-              {report.section_count} section{report.section_count !== 1 ? 's' : ''}
-            </span>
-            <span className="text-caption text-[var(--color-text-tertiary)]">
-              Updated {formatDate(report.updated_at)}
-            </span>
-          </div>
+          <p className="text-caption text-[var(--color-text-tertiary)] mt-1">
+            Updated {formatDate(report.updated_at)}
+          </p>
         </div>
         
-        <div className="flex items-center gap-1 ml-4">
-          <button
-            onClick={onOpen}
-            className="p-2 text-[var(--color-text-secondary)] hover:text-[var(--color-primary)] hover:bg-[var(--color-bg-tertiary)] rounded-lg transition-colors"
-            title="Open"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-            </svg>
-          </button>
+        <div className="flex items-center gap-1 ml-4" onClick={(e) => e.stopPropagation()}>
           <button
             onClick={onStartRename}
             className="p-2 text-[var(--color-text-secondary)] hover:text-[var(--color-primary)] hover:bg-[var(--color-bg-tertiary)] rounded-lg transition-colors"
