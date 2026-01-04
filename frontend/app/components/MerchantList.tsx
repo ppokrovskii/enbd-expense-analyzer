@@ -370,111 +370,7 @@ export default function MerchantList({
         </div>
       )}
 
-      {/* Table */}
-      <div className="card overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-[var(--color-border-light)]">
-            <thead className="bg-[var(--color-bg-secondary)]">
-              <tr>
-                <th className="px-4 py-3 text-left">
-                  <input
-                    type="checkbox"
-                    checked={data.merchants.length > 0 && selectedMerchants.size === data.merchants.length}
-                    onChange={handleSelectAll}
-                    className="checkbox"
-                  />
-                </th>
-                <th 
-                  onClick={() => handleSort('merchant')}
-                  className="px-6 py-3 text-left text-label uppercase tracking-wider text-[var(--color-text-secondary)] cursor-pointer hover:text-[var(--color-text-primary)] transition-colors select-none"
-                >
-                  <div className="flex items-center gap-2">
-                    Merchant
-                    <SortIcon field="merchant" />
-                  </div>
-                </th>
-                <th className="px-6 py-3 text-left text-label uppercase tracking-wider text-[var(--color-text-secondary)]">
-                  Category
-                </th>
-                <th 
-                  onClick={() => handleSort('transaction_count')}
-                  className="px-6 py-3 text-center text-label uppercase tracking-wider text-[var(--color-text-secondary)] cursor-pointer hover:text-[var(--color-text-primary)] transition-colors select-none"
-                >
-                  <div className="flex items-center justify-center gap-2">
-                    Transactions
-                    <SortIcon field="transaction_count" />
-                  </div>
-                </th>
-                <th 
-                  onClick={() => handleSort('total_amount')}
-                  className="px-6 py-3 text-right text-label uppercase tracking-wider text-[var(--color-text-secondary)] cursor-pointer hover:text-[var(--color-text-primary)] transition-colors select-none"
-                >
-                  <div className="flex items-center justify-end gap-2">
-                    Total Amount
-                    <SortIcon field="total_amount" />
-                  </div>
-                </th>
-                <th 
-                  onClick={() => handleSort('last_date')}
-                  className="px-6 py-3 text-right text-label uppercase tracking-wider text-[var(--color-text-secondary)] cursor-pointer hover:text-[var(--color-text-primary)] transition-colors select-none"
-                >
-                  <div className="flex items-center justify-end gap-2">
-                    Last Transaction
-                    <SortIcon field="last_date" />
-                  </div>
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-[var(--color-bg-primary)] divide-y divide-[var(--color-border)]">
-              {data.merchants.map((merchant) => (
-                <tr 
-                  key={merchant.merchant} 
-                  className={`group hover:bg-[var(--color-bg-secondary)] transition-apple ${
-                    selectedMerchants.has(merchant.merchant) ? 'bg-[var(--color-primary)]/5' : ''
-                  }`}
-                >
-                  <td className="px-4 py-4">
-                    <input
-                      type="checkbox"
-                      checked={selectedMerchants.has(merchant.merchant)}
-                      onChange={() => handleSelectMerchant(merchant.merchant)}
-                      className="checkbox"
-                    />
-                  </td>
-                  <td className="px-6 py-4 text-body text-[var(--color-text-primary)]">
-                    <div className="max-w-md">
-                      <p className="font-medium break-words" title={merchant.merchant}>
-                        {merchant.merchant}
-                      </p>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span 
-                      className={getCategoryColor(merchant.category)}
-                      style={getCategoryStyle(merchant.category)}
-                    >
-                      {merchant.category || 'Uncategorized'}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-body text-center text-[var(--color-text-secondary)]">
-                    {merchant.transaction_count}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-body text-right">
-                    <span className="font-semibold text-[var(--color-text-primary)]">
-                      {formatAmount(merchant.total_amount)}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-body text-right text-[var(--color-text-secondary)]">
-                    {formatDate(merchant.last_date)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Pagination */}
+      {/* Pagination (above table) */}
       {totalPages > 1 ? (
         <div className="card px-4 py-3">
           <div className="flex items-center justify-between gap-4">
@@ -586,6 +482,111 @@ export default function MerchantList({
           </div>
         </div>
       )}
+
+      {/* Table */}
+      <div className="card overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-[var(--color-border-light)]">
+            <thead className="bg-[var(--color-bg-secondary)]">
+              <tr>
+                <th className="px-4 py-3 text-left">
+                  <input
+                    type="checkbox"
+                    checked={data.merchants.length > 0 && selectedMerchants.size === data.merchants.length}
+                    onChange={handleSelectAll}
+                    className="checkbox"
+                  />
+                </th>
+                <th 
+                  onClick={() => handleSort('merchant')}
+                  className="px-6 py-3 text-left text-label uppercase tracking-wider text-[var(--color-text-secondary)] cursor-pointer hover:text-[var(--color-text-primary)] transition-colors select-none"
+                >
+                  <div className="flex items-center gap-2">
+                    Merchant
+                    <SortIcon field="merchant" />
+                  </div>
+                </th>
+                <th className="px-6 py-3 text-left text-label uppercase tracking-wider text-[var(--color-text-secondary)]">
+                  Category
+                </th>
+                <th 
+                  onClick={() => handleSort('transaction_count')}
+                  className="px-6 py-3 text-center text-label uppercase tracking-wider text-[var(--color-text-secondary)] cursor-pointer hover:text-[var(--color-text-primary)] transition-colors select-none"
+                >
+                  <div className="flex items-center justify-center gap-2">
+                    Transactions
+                    <SortIcon field="transaction_count" />
+                  </div>
+                </th>
+                <th 
+                  onClick={() => handleSort('total_amount')}
+                  className="px-6 py-3 text-right text-label uppercase tracking-wider text-[var(--color-text-secondary)] cursor-pointer hover:text-[var(--color-text-primary)] transition-colors select-none"
+                >
+                  <div className="flex items-center justify-end gap-2">
+                    Total Amount
+                    <SortIcon field="total_amount" />
+                  </div>
+                </th>
+                <th 
+                  onClick={() => handleSort('last_date')}
+                  className="px-6 py-3 text-right text-label uppercase tracking-wider text-[var(--color-text-secondary)] cursor-pointer hover:text-[var(--color-text-primary)] transition-colors select-none"
+                >
+                  <div className="flex items-center justify-end gap-2">
+                    Last Transaction
+                    <SortIcon field="last_date" />
+                  </div>
+                </th>
+              </tr>
+            </thead>
+            <tbody className="bg-[var(--color-bg-primary)] divide-y divide-[var(--color-border)]">
+              {data.merchants.map((merchant) => (
+                <tr 
+                  key={merchant.merchant} 
+                  onClick={() => handleSelectMerchant(merchant.merchant)}
+                  className={`group hover:bg-[var(--color-bg-secondary)] transition-apple cursor-pointer ${
+                    selectedMerchants.has(merchant.merchant) ? 'bg-[var(--color-primary)]/5' : ''
+                  }`}
+                >
+                  <td className="px-4 py-4" onClick={(e) => e.stopPropagation()}>
+                    <input
+                      type="checkbox"
+                      checked={selectedMerchants.has(merchant.merchant)}
+                      onChange={() => handleSelectMerchant(merchant.merchant)}
+                      className="checkbox"
+                    />
+                  </td>
+                  <td className="px-6 py-4 text-body text-[var(--color-text-primary)]">
+                    <div className="max-w-md">
+                      <p className="font-medium break-words" title={merchant.merchant}>
+                        {merchant.merchant}
+                      </p>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <span 
+                      className={getCategoryColor(merchant.category)}
+                      style={getCategoryStyle(merchant.category)}
+                    >
+                      {merchant.category || 'Uncategorized'}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-body text-center text-[var(--color-text-secondary)]">
+                    {merchant.transaction_count}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-body text-right">
+                    <span className="font-semibold text-[var(--color-text-primary)]">
+                      {formatAmount(merchant.total_amount)}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-body text-right text-[var(--color-text-secondary)]">
+                    {formatDate(merchant.last_date)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   );
 }

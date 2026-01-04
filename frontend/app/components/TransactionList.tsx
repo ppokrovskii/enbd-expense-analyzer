@@ -431,100 +431,7 @@ export default function TransactionList({
         </div>
       )}
 
-      {/* Table */}
-      <div className="card overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-[var(--color-border-light)]">
-            <thead className="bg-[var(--color-bg-secondary)]">
-              <tr>
-                <th className="px-4 py-3 text-left">
-                  <input
-                    type="checkbox"
-                    checked={allOnPageSelected}
-                    onChange={handleSelectAllOnPage}
-                    className="checkbox"
-                    title="Select all merchants on this page"
-                  />
-                </th>
-                <th 
-                  onClick={() => handleSort('date')}
-                  className="px-6 py-3 text-left text-label uppercase tracking-wider text-[var(--color-text-secondary)] cursor-pointer hover:text-[var(--color-text-primary)] transition-colors select-none"
-                >
-                  <div className="flex items-center gap-2">
-                    Date
-                    <SortIcon field="date" />
-                  </div>
-                </th>
-                <th className="px-6 py-3 text-left text-label uppercase tracking-wider text-[var(--color-text-secondary)]">
-                  Merchant
-                </th>
-                <th className="px-6 py-3 text-left text-label uppercase tracking-wider text-[var(--color-text-secondary)]">
-                  Category
-                </th>
-                <th className="px-6 py-3 text-left text-label uppercase tracking-wider text-[var(--color-text-secondary)]">
-                  Account
-                </th>
-                <th 
-                  onClick={() => handleSort('amount')}
-                  className="px-6 py-3 text-right text-label uppercase tracking-wider text-[var(--color-text-secondary)] cursor-pointer hover:text-[var(--color-text-primary)] transition-colors select-none"
-                >
-                  <div className="flex items-center justify-end gap-2">
-                    Amount
-                    <SortIcon field="amount" />
-                  </div>
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-[var(--color-bg-primary)] divide-y divide-[var(--color-border)]">
-              {filteredTransactions.map((transaction) => (
-                <tr 
-                  key={transaction.id} 
-                  className={`group hover:bg-[var(--color-bg-secondary)] transition-apple ${
-                    selectedMerchants.has(transaction.merchant) ? 'bg-[var(--color-primary)]/5' : ''
-                  }`}
-                >
-                  <td className="px-4 py-4">
-                    <input
-                      type="checkbox"
-                      checked={selectedMerchants.has(transaction.merchant)}
-                      onChange={() => handleSelectMerchant(transaction.merchant)}
-                      className="checkbox"
-                    />
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-body text-[var(--color-text-primary)]">
-                    {formatDate(transaction.date)}
-                  </td>
-                  <td className="px-6 py-4 text-body text-[var(--color-text-primary)]">
-                    <div className="max-w-md">
-                      <p className="font-medium break-words" title={transaction.merchant}>
-                        {transaction.merchant}
-                      </p>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span 
-                      className={getCategoryColor(transaction.category)}
-                      style={getCategoryStyle(transaction.category)}
-                    >
-                      {transaction.category}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-body text-[var(--color-text-secondary)]">
-                    {transaction.account}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-body text-right">
-                    <span className={`font-semibold ${transaction.amount_signed < 0 ? "text-apple-red" : "text-apple-green"}`}>
-                      {transaction.amount_signed < 0 ? "-" : "+"}{formatAmount(transaction.amount_signed)}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Pagination or Summary (when only 1 page) */}
+      {/* Pagination (above table) */}
       {totalPages > 1 ? (
         <div className="card px-4 py-3">
           <div className="flex items-center justify-between gap-4">
@@ -636,6 +543,100 @@ export default function TransactionList({
           </div>
         </div>
       )}
+
+      {/* Table */}
+      <div className="card overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-[var(--color-border-light)]">
+            <thead className="bg-[var(--color-bg-secondary)]">
+              <tr>
+                <th className="px-4 py-3 text-left">
+                  <input
+                    type="checkbox"
+                    checked={allOnPageSelected}
+                    onChange={handleSelectAllOnPage}
+                    className="checkbox"
+                    title="Select all merchants on this page"
+                  />
+                </th>
+                <th 
+                  onClick={() => handleSort('date')}
+                  className="px-6 py-3 text-left text-label uppercase tracking-wider text-[var(--color-text-secondary)] cursor-pointer hover:text-[var(--color-text-primary)] transition-colors select-none"
+                >
+                  <div className="flex items-center gap-2">
+                    Date
+                    <SortIcon field="date" />
+                  </div>
+                </th>
+                <th className="px-6 py-3 text-left text-label uppercase tracking-wider text-[var(--color-text-secondary)]">
+                  Merchant
+                </th>
+                <th className="px-6 py-3 text-left text-label uppercase tracking-wider text-[var(--color-text-secondary)]">
+                  Category
+                </th>
+                <th className="px-6 py-3 text-left text-label uppercase tracking-wider text-[var(--color-text-secondary)]">
+                  Account
+                </th>
+                <th 
+                  onClick={() => handleSort('amount')}
+                  className="px-6 py-3 text-right text-label uppercase tracking-wider text-[var(--color-text-secondary)] cursor-pointer hover:text-[var(--color-text-primary)] transition-colors select-none"
+                >
+                  <div className="flex items-center justify-end gap-2">
+                    Amount
+                    <SortIcon field="amount" />
+                  </div>
+                </th>
+              </tr>
+            </thead>
+            <tbody className="bg-[var(--color-bg-primary)] divide-y divide-[var(--color-border)]">
+              {filteredTransactions.map((transaction) => (
+                <tr 
+                  key={transaction.id} 
+                  onClick={() => handleSelectMerchant(transaction.merchant)}
+                  className={`group hover:bg-[var(--color-bg-secondary)] transition-apple cursor-pointer ${
+                    selectedMerchants.has(transaction.merchant) ? 'bg-[var(--color-primary)]/5' : ''
+                  }`}
+                >
+                  <td className="px-4 py-4" onClick={(e) => e.stopPropagation()}>
+                    <input
+                      type="checkbox"
+                      checked={selectedMerchants.has(transaction.merchant)}
+                      onChange={() => handleSelectMerchant(transaction.merchant)}
+                      className="checkbox"
+                    />
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-body text-[var(--color-text-primary)]">
+                    {formatDate(transaction.date)}
+                  </td>
+                  <td className="px-6 py-4 text-body text-[var(--color-text-primary)]">
+                    <div className="max-w-md">
+                      <p className="font-medium break-words" title={transaction.merchant}>
+                        {transaction.merchant}
+                      </p>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <span 
+                      className={getCategoryColor(transaction.category)}
+                      style={getCategoryStyle(transaction.category)}
+                    >
+                      {transaction.category}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-body text-[var(--color-text-secondary)]">
+                    {transaction.account}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-body text-right">
+                    <span className={`font-semibold ${transaction.amount_signed < 0 ? "text-apple-red" : "text-apple-green"}`}>
+                      {transaction.amount_signed < 0 ? "-" : "+"}{formatAmount(transaction.amount_signed)}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   );
 }
