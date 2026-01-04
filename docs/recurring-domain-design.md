@@ -7,7 +7,7 @@
 
 ## Responsibility
 
-Detect recurring transactions (hybrid: algo + LLM), flag "forgotten" (>60 days)
+Detect recurring transactions (hybrid: algo + LLM)
 
 ---
 
@@ -42,15 +42,6 @@ llm_result = await llm.validate_pattern(transactions)
 
 ---
 
-## "Forgotten" Flag
-
-```python
-if last_seen_date < (now - 60 days):
-    group.forgotten = True  # Yellow/orange highlight
-```
-
----
-
 ## Response
 
 ```typescript
@@ -62,7 +53,6 @@ interface RecurringGroup {
   frequency: "weekly" | "monthly" | "quarterly" | "yearly";
   occurrences: number;
   last_seen_date: string;
-  forgotten: boolean;
 }
 ```
 

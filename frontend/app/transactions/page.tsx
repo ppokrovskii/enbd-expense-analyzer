@@ -5,8 +5,10 @@ import { useSearchParams, useRouter } from "next/navigation";
 import FilterPanel from "../components/FilterPanel";
 import SpendingChart from "../components/SpendingChart";
 import TransactionList from "../components/TransactionList";
+import MerchantList from "../components/MerchantList";
 import MetricCard from "../components/ui/MetricCard";
 import SkeletonLoader from "../components/ui/SkeletonLoader";
+import SegmentedControl from "../components/ui/SegmentedControl";
 import { useStats } from "../hooks/useStats";
 
 interface FilterValues {
@@ -55,6 +57,11 @@ export default function TransactionsPage() {
     return (searchParams.get('groupBy') as "week" | "month") || "week";
   });
   
+  // View mode: transactions or merchants
+  const [viewMode, setViewMode] = useState<"transactions" | "merchants">(() => {
+    return (searchParams.get('view') as "transactions" | "merchants") || "transactions";
+  });
+  
   // Selected categories - empty by default (show all)
   // Smart filter state: can be whitelist or blacklist mode
   const [filterMode, setFilterMode] = useState<'none' | 'whitelist' | 'blacklist'>(() => {
@@ -92,10 +99,11 @@ export default function TransactionsPage() {
     }
     
     params.set('groupBy', groupBy);
+    params.set('view', viewMode);
     
     const newUrl = `${window.location.pathname}?${params.toString()}`;
     router.replace(newUrl, { scroll: false });
-  }, [filters, filterMode, filteredCategories, groupBy, router]);
+  }, [filters, filterMode, filteredCategories, groupBy, viewMode, router]);
   
   // Fetch available categories (including transfer categories)
   useEffect(() => {
@@ -553,15 +561,37 @@ export default function TransactionsPage() {
       </div>
 
 
-      {/* Transactions List */}
+      {/* Transactions / Merchants List */}
       <div>
-        <h2 className="text-heading text-[var(--color-text-primary)] mb-4">Transaction Details</h2>
-        <TransactionList 
-          filters={filters}
-          filterMode={filterMode}
-          filteredCategories={filteredCategories}
-          availableCategories={availableCategories}
-        />
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-heading text-[var(--color-text-primary)]">
+            {viewMode === "transactions" ? "Transaction Details" : "Merchants Summary"}
+          </h2>
+          <SegmentedControl
+            options={[
+              { value: "transactions", label: "Transactions" },
+              { value: "merchants", label: "Merchants" },
+            ]}
+            value={viewMode}
+            onChange={(value) => setViewMode(value as "transactions" | "merchants")}
+          />
+        </div>
+        
+        {viewMode === "transactions" ? (
+          <TransactionList 
+            filters={filters}
+            filterMode={filterMode}
+            filteredCategories={filteredCategories}
+            availableCategories={availableCategories}
+          />
+        ) : (
+          <MerchantList 
+            filters={filters}
+            filterMode={filterMode}
+            filteredCategories={filteredCategories}
+            availableCategories={availableCategories}
+          />
+        )}
       </div>
     </div>
   );

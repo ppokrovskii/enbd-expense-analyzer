@@ -46,7 +46,6 @@ Generate shareable PDF/Excel reports for sub-accounts (customer, wife, friend). 
 
 **4. Subscriptions & Recurring**
 - List recurring transactions: Monthly + annualized cost
-- Flag "forgotten" (last seen > 60 days, yellow/orange highlight)
 - AI detection button (not in PDF)
 
 **5. Trends & Anomalies** (AI-generated, editable)

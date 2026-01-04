@@ -58,7 +58,7 @@ async def generate_report(person_id, date_from, date_to):
 1. Summary (income, expenses, balance, takeaway)
 2. Expense Overview (top categories, chart)
 3. Category Details (per category breakdown)
-4. Subscriptions & Recurring (with "forgotten" flag if >60 days)
+4. Subscriptions & Recurring
 5. Trends & Anomalies (5 bullets, AI-generated)
 6. Key Insights (3-5 bullets, plain language, NO advice)
 7. Next Steps (static guidance)

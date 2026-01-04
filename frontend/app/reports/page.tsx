@@ -38,6 +38,17 @@ interface CategoryDetail {
   top_transactions: TopTransaction[];
 }
 
+interface RecurringTransaction {
+  id: string;
+  pattern_name: string;
+  merchant: string;
+  estimated_amount: number;
+  frequency: string;
+  occurrences: number;
+  last_seen_date: string;
+  annualized_cost: number;
+}
+
 export default function ReportsPage() {
   const [filters, setFilters] = useState<FilterValues>(() => {
     // Default to current month
@@ -56,6 +67,23 @@ export default function ReportsPage() {
   const [categoryDetails, setCategoryDetails] = useState<CategoryDetail[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Summary takeaway state
+  const [summaryTakeaway, setSummaryTakeaway] = useState<string>("");
+  const [generatingSummary, setGeneratingSummary] = useState(false);
+
+  // Recurring transactions state
+  const [recurringTransactions, setRecurringTransactions] = useState<RecurringTransaction[]>([]);
+  const [detectingRecurring, setDetectingRecurring] = useState(false);
+  const [recurringLoaded, setRecurringLoaded] = useState(false);
+
+  // Trends & Anomalies state
+  const [trends, setTrends] = useState<string[]>([]);
+  const [generatingTrends, setGeneratingTrends] = useState(false);
+
+  // Key Insights state
+  const [insights, setInsights] = useState<string[]>([]);
+  const [generatingInsights, setGeneratingInsights] = useState(false);
 
   // Memoize chart filters to prevent unnecessary re-renders
   const chartFilters = useMemo(() => ({
@@ -77,6 +105,12 @@ export default function ReportsPage() {
   useEffect(() => {
     const handlePersonChange = () => {
       fetchReportData();
+      // Reset AI-generated content when person changes
+      setSummaryTakeaway("");
+      setRecurringTransactions([]);
+      setRecurringLoaded(false);
+      setTrends([]);
+      setInsights([]);
     };
     
     window.addEventListener('personChanged', handlePersonChange);
@@ -152,6 +186,179 @@ export default function ReportsPage() {
       setError(err instanceof Error ? err.message : 'Failed to load report data');
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Generate AI Summary Takeaway
+  const generateSummaryTakeaway = async () => {
+    setGeneratingSummary(true);
+    try {
+      const response = await fetch('http://localhost:8000/api/chat/quick', {
+        method: 'POST',
+        headers: getApiHeaders(),
+        body: JSON.stringify({
+          message: `Generate a brief 2-3 sentence summary takeaway for a financial report covering ${filters.startDate} to ${filters.endDate}. Total income: ${stats?.total_income || 0} AED, Total expenses: ${stats?.total_expenses || 0} AED, Net: ${stats?.net || 0} AED. Keep it factual, no advice.`
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setSummaryTakeaway(data.response || data.message || "Summary generated successfully.");
+      } else {
+        // Fallback to a simple generated summary
+        const net = stats?.net || 0;
+        const status = net >= 0 ? "positive" : "negative";
+        setSummaryTakeaway(
+          `During this period, total spending was ${formatCurrency(stats?.total_expenses || 0)} against income of ${formatCurrency(stats?.total_income || 0)}, resulting in a ${status} balance of ${formatCurrency(Math.abs(net))}.`
+        );
+      }
+    } catch (err) {
+      // Fallback summary
+      setSummaryTakeaway(
+        `This report covers ${filters.startDate} to ${filters.endDate}. Review the sections below for detailed analysis.`
+      );
+    } finally {
+      setGeneratingSummary(false);
+    }
+  };
+
+  // Detect Recurring Transactions
+  const detectRecurringTransactions = async () => {
+    setDetectingRecurring(true);
+    try {
+      const response = await fetch('http://localhost:8000/api/recurring/detect', {
+        method: 'POST',
+        headers: getApiHeaders(),
+        body: JSON.stringify({
+          start_date: filters.startDate,
+          end_date: filters.endDate
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const patterns = data.recurring_groups || data.patterns || [];
+        
+        // Transform and calculate annualized cost
+        const transformed: RecurringTransaction[] = patterns.map((p: any) => {
+          let annualized = p.estimated_amount;
+          switch (p.frequency?.toLowerCase()) {
+            case 'weekly': annualized *= 52; break;
+            case 'monthly': annualized *= 12; break;
+            case 'quarterly': annualized *= 4; break;
+            case 'yearly': break;
+            default: annualized *= 12; // Default to monthly
+          }
+          return {
+            id: p.id || p.pattern_name,
+            pattern_name: p.pattern_name || p.merchant,
+            merchant: p.merchant,
+            estimated_amount: p.estimated_amount,
+            frequency: p.frequency || 'monthly',
+            occurrences: p.occurrences || 0,
+            last_seen_date: p.last_seen_date,
+            annualized_cost: annualized
+          };
+        });
+        
+        setRecurringTransactions(transformed);
+        setRecurringLoaded(true);
+      }
+    } catch (err) {
+      console.error('Failed to detect recurring:', err);
+    } finally {
+      setDetectingRecurring(false);
+    }
+  };
+
+  // Generate Trends & Anomalies
+  const generateTrends = async () => {
+    setGeneratingTrends(true);
+    try {
+      // First try the insights endpoint for spending trends
+      const start = new Date(filters.startDate);
+      const end = new Date(filters.endDate);
+      const periodDays = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+
+      const response = await fetch(
+        `http://localhost:8000/api/insights/spending-trends?period_days=${periodDays}`,
+        { headers: getApiHeaders() }
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        const trendItems: string[] = [];
+        
+        // Extract trends from the response
+        if (data.trends && data.trends.length > 0) {
+          data.trends.forEach((t: any) => {
+            if (t.description) trendItems.push(t.description);
+          });
+        }
+        
+        // If no trends found, generate some based on data
+        if (trendItems.length === 0 && stats) {
+          if (stats.total_expenses > stats.total_income) {
+            trendItems.push(`Spending exceeded income by ${formatCurrency(stats.total_expenses - stats.total_income)} this period.`);
+          }
+          if (categoryBreakdown.length > 0) {
+            const topCat = categoryBreakdown[0];
+            trendItems.push(`${topCat.category} was the largest spending category at ${topCat.percentage.toFixed(1)}% of total expenses.`);
+          }
+          trendItems.push(`Total of ${stats.transaction_count} transactions recorded during this period.`);
+        }
+        
+        setTrends(trendItems.slice(0, 5));
+      }
+    } catch (err) {
+      // Fallback trends
+      if (stats) {
+        setTrends([
+          `Total spending: ${formatCurrency(stats.total_expenses)}`,
+          `Total income: ${formatCurrency(stats.total_income)}`,
+          `Net balance: ${formatCurrency(stats.net)}`
+        ]);
+      }
+    } finally {
+      setGeneratingTrends(false);
+    }
+  };
+
+  // Generate Key Insights
+  const generateInsights = async () => {
+    setGeneratingInsights(true);
+    try {
+      const start = new Date(filters.startDate);
+      const end = new Date(filters.endDate);
+      const periodDays = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+
+      const response = await fetch(
+        `http://localhost:8000/api/insights/generate?period_days=${periodDays}`,
+        { headers: getApiHeaders() }
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        const insightItems: string[] = [];
+        
+        // Extract insights from the response
+        if (data.insights && data.insights.length > 0) {
+          data.insights.forEach((i: any) => {
+            if (i.description) insightItems.push(i.description);
+          });
+        }
+        
+        setInsights(insightItems.slice(0, 5));
+      }
+    } catch (err) {
+      // Fallback insights
+      setInsights([
+        "Review your spending patterns to identify areas for optimization.",
+        "Track your recurring expenses to ensure they're still necessary.",
+        "Compare this period with previous periods to spot trends."
+      ]);
+    } finally {
+      setGeneratingInsights(false);
     }
   };
 
@@ -249,6 +456,13 @@ export default function ReportsPage() {
         return;
     }
 
+    // Reset AI-generated content when filters change
+    setSummaryTakeaway("");
+    setRecurringTransactions([]);
+    setRecurringLoaded(false);
+    setTrends([]);
+    setInsights([]);
+
     setFilters({
       startDate: `${startYear}-${String(startMonth).padStart(2, '0')}-${String(startDay).padStart(2, '0')}`,
       endDate: `${endYear}-${String(endMonth).padStart(2, '0')}-${String(endDay).padStart(2, '0')}`
@@ -286,6 +500,10 @@ export default function ReportsPage() {
       month: 'short',
       day: 'numeric',
     });
+  };
+
+  const formatFrequency = (freq: string) => {
+    return freq.charAt(0).toUpperCase() + freq.slice(1).toLowerCase();
   };
 
   const exportPDF = async () => {
@@ -365,6 +583,13 @@ export default function ReportsPage() {
       setError(err instanceof Error ? err.message : 'Failed to export Excel');
     }
   };
+
+  // Calculate totals for recurring
+  const totalMonthlyRecurring = recurringTransactions
+    .filter(r => r.frequency.toLowerCase() === 'monthly')
+    .reduce((sum, r) => sum + r.estimated_amount, 0);
+  const totalAnnualizedRecurring = recurringTransactions
+    .reduce((sum, r) => sum + r.annualized_cost, 0);
 
   return (
     <div className="space-y-6">
@@ -494,9 +719,9 @@ export default function ReportsPage() {
         </div>
       </div>
 
-      {/* Report Preview - Section 1: Summary */}
+      {/* Section 1: Summary */}
       <div>
-        <h2 className="text-heading text-[var(--color-text-primary)] mb-4">Report Preview</h2>
+        <h2 className="text-heading text-[var(--color-text-primary)] mb-4">1. Summary</h2>
         
         {/* Summary Totals */}
         {loading ? (
@@ -542,11 +767,48 @@ export default function ReportsPage() {
             />
           </div>
         ) : null}
+
+        {/* Summary Takeaway */}
+        <div className="card p-6">
+          <div className="flex items-center justify-between mb-3">
+            <label className="text-body font-medium text-[var(--color-text-primary)]">
+              Summary Takeaway
+            </label>
+            <button
+              onClick={generateSummaryTakeaway}
+              disabled={generatingSummary || !stats}
+              className="btn btn-secondary text-caption py-1.5 px-3 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {generatingSummary ? (
+                <>
+                  <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                  </svg>
+                  Generating...
+                </>
+              ) : (
+                <>
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                  </svg>
+                  Generate with AI
+                </>
+              )}
+            </button>
+          </div>
+          <textarea
+            value={summaryTakeaway}
+            onChange={(e) => setSummaryTakeaway(e.target.value)}
+            placeholder="Click 'Generate with AI' to create a summary, or write your own takeaway..."
+            className="input min-h-[100px] resize-y"
+          />
+        </div>
       </div>
 
       {/* Section 2: Expense Overview Chart */}
       <div>
-        <h2 className="text-heading text-[var(--color-text-primary)] mb-4">Expense Overview</h2>
+        <h2 className="text-heading text-[var(--color-text-primary)] mb-4">2. Expense Overview</h2>
         <SpendingChart
           filters={chartFilters}
           onGroupByChange={noopGroupByChange}
@@ -557,9 +819,9 @@ export default function ReportsPage() {
       </div>
 
       {/* Section 3: Top Categories */}
-      {!loading && categoryBreakdown.length > 0 && (
-        <div>
-          <h2 className="text-heading text-[var(--color-text-primary)] mb-4">Top Spending Categories</h2>
+      <div>
+        <h2 className="text-heading text-[var(--color-text-primary)] mb-4">3. Top Spending Categories</h2>
+        {!loading && categoryBreakdown.length > 0 ? (
           <div className="card p-6">
             <div className="space-y-4">
               {categoryBreakdown.map((cat, index) => (
@@ -579,8 +841,8 @@ export default function ReportsPage() {
                   </div>
                   <div className="w-full bg-[var(--color-bg-tertiary)] rounded-full h-2">
                     <div
-                      className="bg-gradient-to-r from-[var(--color-primary)] to-[var(--color-primary-dark)] h-2 rounded-full transition-all duration-500"
-                      style={{ width: `${cat.percentage}%` }}
+                      className="bg-gradient-to-r from-[var(--color-primary)] to-[var(--color-primary-hover)] h-2 rounded-full transition-all duration-500"
+                      style={{ width: `${Math.min(cat.percentage, 100)}%` }}
                     />
                   </div>
                   <p className="text-caption text-[var(--color-text-secondary)]">
@@ -590,85 +852,239 @@ export default function ReportsPage() {
               ))}
             </div>
           </div>
-        </div>
-      )}
-
-      {/* Section 4: Category Details */}
-      {!loading && categoryDetails.length > 0 && (
-        <div>
-          <h2 className="text-heading text-[var(--color-text-primary)] mb-4">Category Details</h2>
-          <div className="space-y-4">
-            {categoryDetails.map((detail, index) => (
-              <div key={index} className="card p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-subheading text-[var(--color-text-primary)]">
-                    {detail.category || 'Uncategorized'}
-                  </h3>
-                  <div className="text-right">
-                    <div className="text-heading text-[var(--color-text-primary)]">
-                      {formatCurrency(detail.total)}
-                    </div>
-                    <div className="text-caption text-[var(--color-text-secondary)]">
-                      {detail.count} transactions
-                    </div>
-                  </div>
-                </div>
-                
-                {detail.top_transactions.length > 0 && (
-                  <div>
-                    <p className="text-caption text-[var(--color-text-secondary)] mb-2">
-                      Top transactions:
-                    </p>
-                    <div className="space-y-2">
-                      {detail.top_transactions.slice(0, 5).map((txn, txnIndex) => (
-                        <div
-                          key={txnIndex}
-                          className="flex items-center justify-between py-2 border-b border-[var(--color-border-light)] last:border-b-0"
-                        >
-                          <div className="flex-1">
-                            <p className="text-body text-[var(--color-text-primary)]">
-                              {txn.description}
-                            </p>
-                            <p className="text-caption text-[var(--color-text-secondary)]">
-                              {formatDate(txn.date)}
-                            </p>
-                          </div>
-                          <div className="text-body font-medium text-[var(--color-text-primary)]">
-                            {formatCurrency(txn.amount)}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            ))}
+        ) : (
+          <div className="card p-6 text-center text-[var(--color-text-secondary)]">
+            {loading ? "Loading categories..." : "No category data available for this period."}
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
-      {/* Section 5: AI-Generated Insights Placeholder */}
+      {/* Section 4: Subscriptions & Recurring */}
       <div>
-        <h2 className="text-heading text-[var(--color-text-primary)] mb-4">Key Insights</h2>
+        <h2 className="text-heading text-[var(--color-text-primary)] mb-4">4. Subscriptions & Recurring</h2>
         <div className="card p-6">
-          <div className="flex items-start gap-4 mb-4">
-            <div className="p-3 rounded-lg bg-[var(--color-primary)]/10">
-              <svg className="w-6 h-6 text-[var(--color-primary)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-              </svg>
-            </div>
-            <div className="flex-1">
-              <p className="text-body text-[var(--color-text-secondary)] italic">
-                AI-generated insights will appear here when you export the report. These insights will analyze spending patterns, identify trends, and highlight important observations from your financial data.
+          {!recurringLoaded ? (
+            <div className="text-center py-6">
+              <p className="text-body text-[var(--color-text-secondary)] mb-4">
+                Detect recurring transactions to see your subscriptions and regular expenses.
               </p>
+              <button
+                onClick={detectRecurringTransactions}
+                disabled={detectingRecurring}
+                className="btn btn-primary flex items-center gap-2 mx-auto disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {detectingRecurring ? (
+                  <>
+                    <svg className="w-5 h-5 animate-spin" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                    </svg>
+                    Detecting...
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                    Detect Recurring Transactions
+                  </>
+                )}
+              </button>
             </div>
-          </div>
+          ) : recurringTransactions.length > 0 ? (
+            <>
+              {/* Summary */}
+              <div className="grid grid-cols-2 gap-4 mb-6 p-4 bg-[var(--color-bg-secondary)] rounded-lg">
+                <div>
+                  <p className="text-caption text-[var(--color-text-secondary)]">Monthly Total</p>
+                  <p className="text-heading text-[var(--color-text-primary)]">{formatCurrency(totalMonthlyRecurring)}</p>
+                </div>
+                <div>
+                  <p className="text-caption text-[var(--color-text-secondary)]">Annualized Total</p>
+                  <p className="text-heading text-[var(--color-text-primary)]">{formatCurrency(totalAnnualizedRecurring)}</p>
+                </div>
+              </div>
+              
+              {/* List */}
+              <div className="space-y-3">
+                {recurringTransactions.map((recurring, index) => (
+                  <div
+                    key={recurring.id || index}
+                    className="flex items-center justify-between py-3 border-b border-[var(--color-border-light)] last:border-b-0"
+                  >
+                    <div className="flex-1">
+                      <p className="text-body font-medium text-[var(--color-text-primary)]">
+                        {recurring.pattern_name || recurring.merchant}
+                      </p>
+                      <p className="text-caption text-[var(--color-text-secondary)]">
+                        {formatFrequency(recurring.frequency)} • {recurring.occurrences} occurrences
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-body font-semibold text-[var(--color-text-primary)]">
+                        {formatCurrency(recurring.estimated_amount)}/{recurring.frequency.toLowerCase() === 'monthly' ? 'mo' : recurring.frequency.slice(0, 2)}
+                      </p>
+                      <p className="text-caption text-[var(--color-text-secondary)]">
+                        {formatCurrency(recurring.annualized_cost)}/year
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              
+              {/* Re-detect button */}
+              <div className="mt-4 pt-4 border-t border-[var(--color-border-light)]">
+                <button
+                  onClick={detectRecurringTransactions}
+                  disabled={detectingRecurring}
+                  className="text-caption text-[var(--color-primary)] hover:underline disabled:opacity-50"
+                >
+                  {detectingRecurring ? "Detecting..." : "Re-detect recurring transactions"}
+                </button>
+              </div>
+            </>
+          ) : (
+            <div className="text-center py-6">
+              <p className="text-body text-[var(--color-text-secondary)]">
+                No recurring transactions detected for this period.
+              </p>
+              <button
+                onClick={detectRecurringTransactions}
+                disabled={detectingRecurring}
+                className="mt-3 text-caption text-[var(--color-primary)] hover:underline"
+              >
+                Try again
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Section 6: Next Steps */}
+      {/* Section 5: Trends & Anomalies */}
       <div>
-        <h2 className="text-heading text-[var(--color-text-primary)] mb-4">Next Steps</h2>
+        <h2 className="text-heading text-[var(--color-text-primary)] mb-4">5. Trends & Anomalies</h2>
+        <div className="card p-6">
+          <div className="flex items-center justify-between mb-4">
+            <p className="text-caption text-[var(--color-text-secondary)]">
+              AI-generated analysis of spending patterns and unusual transactions
+            </p>
+            <button
+              onClick={generateTrends}
+              disabled={generatingTrends}
+              className="btn btn-secondary text-caption py-1.5 px-3 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {generatingTrends ? (
+                <>
+                  <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                  </svg>
+                  Generating...
+                </>
+              ) : (
+                <>
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                  </svg>
+                  Generate Trends
+                </>
+              )}
+            </button>
+          </div>
+          
+          {trends.length > 0 ? (
+            <ul className="space-y-3">
+              {trends.map((trend, index) => (
+                <li key={index} className="flex items-start gap-3">
+                  <span className="flex-shrink-0 w-6 h-6 rounded-full bg-[var(--color-primary)]/10 text-[var(--color-primary)] flex items-center justify-center text-caption font-medium">
+                    {index + 1}
+                  </span>
+                  <input
+                    type="text"
+                    value={trend}
+                    onChange={(e) => {
+                      const newTrends = [...trends];
+                      newTrends[index] = e.target.value;
+                      setTrends(newTrends);
+                    }}
+                    className="flex-1 bg-transparent border-b border-transparent hover:border-[var(--color-border)] focus:border-[var(--color-primary)] focus:outline-none py-1 text-body text-[var(--color-text-primary)]"
+                  />
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-body text-[var(--color-text-secondary)] italic text-center py-4">
+              Click "Generate Trends" to analyze spending patterns and identify anomalies.
+            </p>
+          )}
+        </div>
+      </div>
+
+      {/* Section 6: Key Insights */}
+      <div>
+        <h2 className="text-heading text-[var(--color-text-primary)] mb-4">6. Key Insights</h2>
+        <div className="card p-6">
+          <div className="flex items-center justify-between mb-4">
+            <p className="text-caption text-[var(--color-text-secondary)]">
+              AI-generated insights about your financial data
+            </p>
+            <button
+              onClick={generateInsights}
+              disabled={generatingInsights}
+              className="btn btn-secondary text-caption py-1.5 px-3 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {generatingInsights ? (
+                <>
+                  <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                  </svg>
+                  Generating...
+                </>
+              ) : (
+                <>
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                  </svg>
+                  Generate Insights
+                </>
+              )}
+            </button>
+          </div>
+          
+          {insights.length > 0 ? (
+            <ul className="space-y-3">
+              {insights.map((insight, index) => (
+                <li key={index} className="flex items-start gap-3">
+                  <div className="flex-shrink-0 p-1.5 rounded-lg bg-[var(--color-primary)]/10">
+                    <svg className="w-4 h-4 text-[var(--color-primary)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                    </svg>
+                  </div>
+                  <input
+                    type="text"
+                    value={insight}
+                    onChange={(e) => {
+                      const newInsights = [...insights];
+                      newInsights[index] = e.target.value;
+                      setInsights(newInsights);
+                    }}
+                    className="flex-1 bg-transparent border-b border-transparent hover:border-[var(--color-border)] focus:border-[var(--color-primary)] focus:outline-none py-1 text-body text-[var(--color-text-primary)]"
+                  />
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-body text-[var(--color-text-secondary)] italic text-center py-4">
+              Click "Generate Insights" to get AI-powered analysis of your financial data.
+            </p>
+          )}
+        </div>
+      </div>
+
+      {/* Section 7: Next Steps */}
+      <div>
+        <h2 className="text-heading text-[var(--color-text-primary)] mb-4">7. Next Steps</h2>
         <div className="card p-6">
           <ul className="space-y-3">
             <li className="flex items-start gap-3">

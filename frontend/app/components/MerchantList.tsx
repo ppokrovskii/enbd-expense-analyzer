@@ -1,23 +1,21 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import SkeletonLoader from "./ui/SkeletonLoader";
 import EmptyState from "./ui/EmptyState";
 import { getApiHeaders } from "../utils/api";
 
-interface Transaction {
-  id: number;
-  date: string;
-  account: string;
+interface MerchantSummary {
   merchant: string;
-  category: string;
-  amount: number;
-  amount_signed: number;
-  description: string;
+  category: string | null;
+  transaction_count: number;
+  total_amount: number;
+  first_date: string;
+  last_date: string;
 }
 
-interface TransactionListResponse {
-  transactions: Transaction[];
+interface MerchantListResponse {
+  merchants: MerchantSummary[];
   total: number;
   total_amount: number;
   page: number;
@@ -32,35 +30,36 @@ interface FilterValues {
   merchant: string;
 }
 
-interface TransactionListProps {
+interface MerchantListProps {
   filters?: FilterValues;
   filterMode?: 'none' | 'whitelist' | 'blacklist';
   filteredCategories?: string[];
-  availableCategories?: string[]; // All categories from chart
+  availableCategories?: string[];
 }
 
-export default function TransactionList({ 
+export default function MerchantList({ 
   filters, 
   filterMode = 'none', 
   filteredCategories = [], 
   availableCategories = []
-}: TransactionListProps) {
-  const [data, setData] = useState<TransactionListResponse | null>(null);
+}: MerchantListProps) {
+  const [data, setData] = useState<MerchantListResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
-  const [sortBy, setSortBy] = useState<'date' | 'amount'>('date');
+  const [sortBy, setSortBy] = useState<'total_amount' | 'transaction_count' | 'merchant' | 'last_date'>('total_amount');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [categoryColors, setCategoryColors] = useState<Record<string, string>>({});
   const [selectedMerchants, setSelectedMerchants] = useState<Set<string>>(new Set());
+  const [isAiProcessing, setIsAiProcessing] = useState(false);
   
-  // Load page size from localStorage, default to 20
+  // Load page size from localStorage, default to 50
   const [pageSize, setPageSize] = useState(() => {
     if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('transactionPageSize');
-      return saved ? parseInt(saved, 10) : 20;
+      const saved = localStorage.getItem('merchantPageSize');
+      return saved ? parseInt(saved, 10) : 50;
     }
-    return 20;
+    return 50;
   });
 
   // Fetch category colors on mount
@@ -108,76 +107,7 @@ export default function TransactionList({
     setSelectedMerchants(new Set());
   }, [filters, filterMode, filteredCategories, sortBy, sortOrder]);
 
-  useEffect(() => {
-    fetchTransactions(currentPage, filters || {
-      startDate: "",
-      endDate: "",
-      categories: [],
-      accounts: [],
-      merchant: ""
-    });
-  }, [currentPage, filters, filterMode, filteredCategories, pageSize, sortBy, sortOrder, personVersion]);
-  
-  // Save page size to localStorage when it changes
-  const handlePageSizeChange = (newSize: number) => {
-    setPageSize(newSize);
-    setCurrentPage(1); // Reset to first page when changing page size
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('transactionPageSize', newSize.toString());
-    }
-  };
-
-  const handleSelectMerchant = (merchant: string) => {
-    setSelectedMerchants(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(merchant)) {
-        newSet.delete(merchant);
-      } else {
-        newSet.add(merchant);
-      }
-      return newSet;
-    });
-  };
-
-  const handleSelectAllOnPage = () => {
-    if (!data) return;
-    
-    const merchantsOnPage = new Set(data.transactions.map(t => t.merchant));
-    const allSelected = Array.from(merchantsOnPage).every(m => selectedMerchants.has(m));
-    
-    if (allSelected) {
-      // Deselect all merchants on current page
-      setSelectedMerchants(prev => {
-        const newSet = new Set(prev);
-        merchantsOnPage.forEach(m => newSet.delete(m));
-        return newSet;
-      });
-    } else {
-      // Select all merchants on current page
-      setSelectedMerchants(prev => {
-        const newSet = new Set(prev);
-        merchantsOnPage.forEach(m => newSet.add(m));
-        return newSet;
-      });
-    }
-  };
-
-  const handleAICategorizeSelected = () => {
-    if (selectedMerchants.size === 0) return;
-    
-    // Store merchants in sessionStorage
-    if (typeof window !== 'undefined') {
-      sessionStorage.setItem('ai_categorize_merchants', JSON.stringify(Array.from(selectedMerchants)));
-      sessionStorage.setItem('ai_categorize_days', '90');
-      sessionStorage.setItem('ai_categorize_referrer', 'transactions');
-      sessionStorage.setItem('ai_categorize_return_url', window.location.href);
-    }
-    
-    // Navigate to AI suggestions page
-    window.location.href = '/categories/ai-suggestions';
-  };
-
-  const fetchTransactions = async (page: number, appliedFilters: FilterValues) => {
+  const fetchMerchants = useCallback(async (page: number, appliedFilters: FilterValues) => {
     setLoading(true);
     setError(null);
 
@@ -194,22 +124,18 @@ export default function TransactionList({
       
       // Smart filter: whitelist or blacklist mode
       if (filterMode === 'whitelist' && filteredCategories.length > 0) {
-        // Whitelist mode: only show selected categories
         filteredCategories.forEach((cat) => params.append("categories", cat));
       } else if (filterMode === 'blacklist' && filteredCategories.length > 0 && availableCategories.length > 0) {
-        // Blacklist mode: show all except selected categories
         const includedCategories = availableCategories.filter(cat => !filteredCategories.includes(cat));
         includedCategories.forEach(cat => params.append("categories", cat));
       } else if (appliedFilters.categories && appliedFilters.categories.length > 0) {
-        // Explicit filter from filter panel
         appliedFilters.categories.forEach(cat => params.append("categories", cat));
       }
-      // If filterMode is 'none' and no explicit filter, don't send categories filter at all (show everything)
       
       appliedFilters.accounts.forEach(acc => params.append("accounts", acc));
 
       const response = await fetch(
-        `http://localhost:8000/api/transactions?${params.toString()}`,
+        `http://localhost:8000/api/merchants?${params.toString()}`,
         { headers: getApiHeaders() }
       );
 
@@ -220,10 +146,68 @@ export default function TransactionList({
       const result = await response.json();
       setData(result);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load transactions");
+      setError(err instanceof Error ? err.message : "Failed to load merchants");
     } finally {
       setLoading(false);
     }
+  }, [pageSize, sortBy, sortOrder, filterMode, filteredCategories, availableCategories]);
+
+  useEffect(() => {
+    fetchMerchants(currentPage, filters || {
+      startDate: "",
+      endDate: "",
+      categories: [],
+      accounts: [],
+      merchant: ""
+    });
+  }, [currentPage, filters, pageSize, sortBy, sortOrder, personVersion, fetchMerchants]);
+  
+  // Save page size to localStorage when it changes
+  const handlePageSizeChange = (newSize: number) => {
+    setPageSize(newSize);
+    setCurrentPage(1);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('merchantPageSize', newSize.toString());
+    }
+  };
+
+  const handleSelectMerchant = (merchant: string) => {
+    setSelectedMerchants(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(merchant)) {
+        newSet.delete(merchant);
+      } else {
+        newSet.add(merchant);
+      }
+      return newSet;
+    });
+  };
+
+  const handleSelectAll = () => {
+    if (!data) return;
+    
+    if (selectedMerchants.size === data.merchants.length) {
+      // Deselect all
+      setSelectedMerchants(new Set());
+    } else {
+      // Select all on current page
+      setSelectedMerchants(new Set(data.merchants.map(m => m.merchant)));
+    }
+  };
+
+  const handleAICategorize = () => {
+    if (selectedMerchants.size === 0) return;
+    
+    // Store merchants in sessionStorage
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('ai_categorize_merchants', JSON.stringify(Array.from(selectedMerchants)));
+      sessionStorage.setItem('ai_categorize_days', '90');
+      sessionStorage.setItem('ai_categorize_referrer', 'merchants');
+      sessionStorage.setItem('ai_categorize_return_url', window.location.href);
+    }
+    
+    // Navigate to AI suggestions page
+    window.location.href = '/categories/ai-suggestions';
   };
 
   const formatDate = (dateStr: string) => {
@@ -238,125 +222,44 @@ export default function TransactionList({
     return new Intl.NumberFormat("en-AE", {
       style: "currency",
       currency: "AED",
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
     }).format(Math.abs(amount));
   };
 
-  const getCategoryColor = (category: string) => {
-    // Use color from API if available
+  const getCategoryColor = (category: string | null) => {
+    if (!category) return "bg-gray-500/20 text-gray-300 border border-gray-500/30";
     const color = categoryColors[category];
     if (color) {
-      // Convert hex color to Tailwind-style classes
       return `px-2.5 py-1 inline-flex text-label font-medium rounded-full border`;
     }
-    
-    // Fallback to default gray for unknown categories
     return "bg-gray-500/20 text-gray-300 border border-gray-500/30";
   };
   
-  const getCategoryStyle = (category: string): React.CSSProperties | undefined => {
+  const getCategoryStyle = (category: string | null): React.CSSProperties | undefined => {
+    if (!category) return undefined;
     const color = categoryColors[category];
     if (color) {
       return {
-        backgroundColor: `${color}33`, // 20% opacity
+        backgroundColor: `${color}33`,
         color: color,
-        borderColor: `${color}66`, // 40% opacity
+        borderColor: `${color}66`,
       };
     }
     return undefined;
   };
 
-  if (loading && !data) {
-    return <SkeletonLoader variant="table" count={5} />;
-  }
-
-  if (error) {
-    return (
-      <div className="card p-4 bg-red-50 border border-red-200">
-        <p className="text-body text-red-800">{error}</p>
-      </div>
-    );
-  }
-
-  if (!data || data.transactions.length === 0) {
-    return (
-      <div className="card">
-        <EmptyState
-          title="No transactions found"
-          description="Try adjusting your filters or upload some ENBD files to get started"
-          icon={
-            <svg className="w-16 h-16 text-[var(--color-text-tertiary)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-            </svg>
-          }
-        />
-      </div>
-    );
-  }
-
-  const totalPages = Math.ceil(data.total / pageSize);
-  
-  // No need for client-side filtering - API returns filtered data
-  const filteredTransactions = data.transactions;
-  
-  // Calculate pagination range
-  const getPageNumbers = () => {
-    const maxPagesToShow = 5;
-    const pages: number[] = [];
-    
-    if (totalPages <= maxPagesToShow) {
-      // Show all pages if total is less than max
-      for (let i = 1; i <= totalPages; i++) {
-        pages.push(i);
-      }
-    } else {
-      // Calculate start and end around current page
-      let start = Math.max(1, currentPage - Math.floor(maxPagesToShow / 2));
-      let end = Math.min(totalPages, start + maxPagesToShow - 1);
-      
-      // Adjust start if we're near the end
-      if (end === totalPages) {
-        start = Math.max(1, end - maxPagesToShow + 1);
-      }
-      
-      for (let i = start; i <= end; i++) {
-        pages.push(i);
-      }
-    }
-    
-    return pages;
-  };
-  
-  const pageNumbers = getPageNumbers();
-  
-  // Use total_amount from API (all filtered transactions)
-  // NOT calculated from current page
-  const filteredTotal = data.total_amount || 0;
-  
-  const formatCurrencyShort = (amount: number) => {
-    return new Intl.NumberFormat("en-AE", {
-      style: "currency",
-      currency: "AED",
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(amount);
-  };
-  
-  const handleSort = (field: 'date' | 'amount') => {
+  const handleSort = (field: 'total_amount' | 'transaction_count' | 'merchant' | 'last_date') => {
     if (sortBy === field) {
-      // Toggle order if clicking the same field
       setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
     } else {
-      // Default to desc for new field
       setSortBy(field);
       setSortOrder('desc');
     }
   };
   
-  const SortIcon = ({ field }: { field: 'date' | 'amount' }) => {
+  const SortIcon = ({ field }: { field: 'total_amount' | 'transaction_count' | 'merchant' | 'last_date' }) => {
     if (sortBy !== field) {
-      // Show neutral icon when not sorted by this field
       return (
         <svg className="w-4 h-4 opacity-30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
@@ -376,17 +279,28 @@ export default function TransactionList({
       </svg>
     );
   };
-  
-  // Show empty state if all transactions are filtered out
-  if (filteredTransactions.length === 0 && (filterMode === 'whitelist' || filterMode === 'blacklist')) {
+
+  if (loading && !data) {
+    return <SkeletonLoader variant="table" count={5} />;
+  }
+
+  if (error) {
+    return (
+      <div className="card p-4 bg-red-50 border border-red-200">
+        <p className="text-body text-red-800">{error}</p>
+      </div>
+    );
+  }
+
+  if (!data || data.merchants.length === 0) {
     return (
       <div className="card">
         <EmptyState
-          title="All transactions filtered out"
-          description="The selected category filters have hidden all transactions. Click on categories in the chart legend to show them again."
+          title="No merchants found"
+          description="Try adjusting your filters or upload some transactions to get started"
           icon={
             <svg className="w-16 h-16 text-[var(--color-text-tertiary)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
             </svg>
           }
         />
@@ -394,9 +308,33 @@ export default function TransactionList({
     );
   }
 
-  // Determine if all merchants on current page are selected
-  const merchantsOnPage = data ? new Set(data.transactions.map(t => t.merchant)) : new Set();
-  const allOnPageSelected = merchantsOnPage.size > 0 && Array.from(merchantsOnPage).every(m => selectedMerchants.has(m));
+  const totalPages = Math.ceil(data.total / pageSize);
+  
+  const getPageNumbers = () => {
+    const maxPagesToShow = 5;
+    const pages: number[] = [];
+    
+    if (totalPages <= maxPagesToShow) {
+      for (let i = 1; i <= totalPages; i++) {
+        pages.push(i);
+      }
+    } else {
+      let start = Math.max(1, currentPage - Math.floor(maxPagesToShow / 2));
+      let end = Math.min(totalPages, start + maxPagesToShow - 1);
+      
+      if (end === totalPages) {
+        start = Math.max(1, end - maxPagesToShow + 1);
+      }
+      
+      for (let i = start; i <= end; i++) {
+        pages.push(i);
+      }
+    }
+    
+    return pages;
+  };
+  
+  const pageNumbers = getPageNumbers();
 
   return (
     <div className="space-y-4">
@@ -416,8 +354,9 @@ export default function TransactionList({
               </button>
             </div>
             <button
-              onClick={handleAICategorizeSelected}
-              className="px-4 py-2 text-sm text-white rounded-lg transition-all flex items-center gap-2 font-medium shadow-md hover:shadow-lg hover:scale-105"
+              onClick={handleAICategorize}
+              disabled={isAiProcessing}
+              className="px-4 py-2 text-sm text-white rounded-lg transition-all flex items-center gap-2 font-medium shadow-md hover:shadow-lg hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
               style={{
                 background: 'linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%)',
               }}
@@ -440,82 +379,93 @@ export default function TransactionList({
                 <th className="px-4 py-3 text-left">
                   <input
                     type="checkbox"
-                    checked={allOnPageSelected}
-                    onChange={handleSelectAllOnPage}
+                    checked={data.merchants.length > 0 && selectedMerchants.size === data.merchants.length}
+                    onChange={handleSelectAll}
                     className="w-4 h-4 rounded border-[var(--color-border)] text-[var(--color-primary)] focus:ring-[var(--color-primary)] cursor-pointer"
-                    title="Select all merchants on this page"
                   />
                 </th>
                 <th 
-                  onClick={() => handleSort('date')}
+                  onClick={() => handleSort('merchant')}
                   className="px-6 py-3 text-left text-label uppercase tracking-wider text-[var(--color-text-secondary)] cursor-pointer hover:text-[var(--color-text-primary)] transition-colors select-none"
                 >
                   <div className="flex items-center gap-2">
-                    Date
-                    <SortIcon field="date" />
+                    Merchant
+                    <SortIcon field="merchant" />
                   </div>
-                </th>
-                <th className="px-6 py-3 text-left text-label uppercase tracking-wider text-[var(--color-text-secondary)]">
-                  Merchant
                 </th>
                 <th className="px-6 py-3 text-left text-label uppercase tracking-wider text-[var(--color-text-secondary)]">
                   Category
                 </th>
-                <th className="px-6 py-3 text-left text-label uppercase tracking-wider text-[var(--color-text-secondary)]">
-                  Account
+                <th 
+                  onClick={() => handleSort('transaction_count')}
+                  className="px-6 py-3 text-center text-label uppercase tracking-wider text-[var(--color-text-secondary)] cursor-pointer hover:text-[var(--color-text-primary)] transition-colors select-none"
+                >
+                  <div className="flex items-center justify-center gap-2">
+                    Transactions
+                    <SortIcon field="transaction_count" />
+                  </div>
                 </th>
                 <th 
-                  onClick={() => handleSort('amount')}
+                  onClick={() => handleSort('total_amount')}
                   className="px-6 py-3 text-right text-label uppercase tracking-wider text-[var(--color-text-secondary)] cursor-pointer hover:text-[var(--color-text-primary)] transition-colors select-none"
                 >
                   <div className="flex items-center justify-end gap-2">
-                    Amount
-                    <SortIcon field="amount" />
+                    Total Amount
+                    <SortIcon field="total_amount" />
+                  </div>
+                </th>
+                <th 
+                  onClick={() => handleSort('last_date')}
+                  className="px-6 py-3 text-right text-label uppercase tracking-wider text-[var(--color-text-secondary)] cursor-pointer hover:text-[var(--color-text-primary)] transition-colors select-none"
+                >
+                  <div className="flex items-center justify-end gap-2">
+                    Last Transaction
+                    <SortIcon field="last_date" />
                   </div>
                 </th>
               </tr>
             </thead>
             <tbody className="bg-[var(--color-bg-primary)] divide-y divide-[var(--color-border)]">
-              {filteredTransactions.map((transaction) => (
+              {data.merchants.map((merchant) => (
                 <tr 
-                  key={transaction.id} 
+                  key={merchant.merchant} 
                   className={`group hover:bg-[var(--color-bg-secondary)] transition-apple ${
-                    selectedMerchants.has(transaction.merchant) ? 'bg-[var(--color-primary)]/5' : ''
+                    selectedMerchants.has(merchant.merchant) ? 'bg-[var(--color-primary)]/5' : ''
                   }`}
                 >
                   <td className="px-4 py-4">
                     <input
                       type="checkbox"
-                      checked={selectedMerchants.has(transaction.merchant)}
-                      onChange={() => handleSelectMerchant(transaction.merchant)}
+                      checked={selectedMerchants.has(merchant.merchant)}
+                      onChange={() => handleSelectMerchant(merchant.merchant)}
                       className="w-4 h-4 rounded border-[var(--color-border)] text-[var(--color-primary)] focus:ring-[var(--color-primary)] cursor-pointer"
                     />
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-body text-[var(--color-text-primary)]">
-                    {formatDate(transaction.date)}
-                  </td>
                   <td className="px-6 py-4 text-body text-[var(--color-text-primary)]">
                     <div className="max-w-md">
-                      <p className="font-medium break-words" title={transaction.merchant}>
-                        {transaction.merchant}
+                      <p className="font-medium break-words" title={merchant.merchant}>
+                        {merchant.merchant}
                       </p>
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span 
-                      className={getCategoryColor(transaction.category)}
-                      style={getCategoryStyle(transaction.category)}
+                      className={getCategoryColor(merchant.category)}
+                      style={getCategoryStyle(merchant.category)}
                     >
-                      {transaction.category}
+                      {merchant.category || 'Uncategorized'}
                     </span>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-body text-[var(--color-text-secondary)]">
-                    {transaction.account}
+                  <td className="px-6 py-4 whitespace-nowrap text-body text-center text-[var(--color-text-secondary)]">
+                    {merchant.transaction_count}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-body text-right">
-                    <span className={`font-semibold ${transaction.amount_signed < 0 ? "text-apple-red" : "text-apple-green"}`}>
-                      {transaction.amount_signed < 0 ? "-" : "+"}{formatAmount(transaction.amount_signed)}
+                    <span className="font-semibold text-[var(--color-text-primary)]">
+                      {formatAmount(merchant.total_amount)}
                     </span>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-body text-right text-[var(--color-text-secondary)]">
+                    {formatDate(merchant.last_date)}
                   </td>
                 </tr>
               ))}
@@ -524,7 +474,7 @@ export default function TransactionList({
         </div>
       </div>
 
-      {/* Pagination or Summary (when only 1 page) */}
+      {/* Pagination */}
       {totalPages > 1 ? (
         <div className="card px-4 py-3">
           <div className="flex items-center justify-between gap-4">
@@ -551,8 +501,8 @@ export default function TransactionList({
               {/* Info section */}
               <div className="flex items-center gap-4">
                 <p className="text-body text-[var(--color-text-secondary)]">
-                  Showing <span className="font-medium text-[var(--color-text-primary)]">{filteredTransactions.length}</span> of{" "}
-                  <span className="font-medium text-[var(--color-text-primary)]">{data.total}</span> transactions
+                  <span className="font-medium text-[var(--color-text-primary)]">{data.total}</span> merchants • Total: {' '}
+                  <span className="font-medium text-[var(--color-text-primary)]">{formatAmount(data.total_amount)}</span>
                 </p>
                 
                 {/* Page size selector */}
@@ -565,10 +515,10 @@ export default function TransactionList({
                     onChange={(e) => handlePageSizeChange(parseInt(e.target.value, 10))}
                     className="input py-1 px-2 text-body"
                   >
-                    <option value={10}>10</option>
-                    <option value={20}>20</option>
+                    <option value={25}>25</option>
                     <option value={50}>50</option>
                     <option value={100}>100</option>
+                    <option value={200}>200</option>
                   </select>
                 </div>
               </div>
@@ -613,11 +563,11 @@ export default function TransactionList({
         <div className="card px-4 py-3">
           <div className="flex items-center justify-between">
             <p className="text-body text-[var(--color-text-secondary)]">
-              Showing <span className="font-medium text-[var(--color-text-primary)]">{filteredTransactions.length}</span> 
-              {' '}{filteredTransactions.length === 1 ? 'transaction' : 'transactions'}
+              <span className="font-medium text-[var(--color-text-primary)]">{data.total}</span> 
+              {' '}{data.total === 1 ? 'merchant' : 'merchants'} • Total: {' '}
+              <span className="font-medium text-[var(--color-text-primary)]">{formatAmount(data.total_amount)}</span>
             </p>
             
-            {/* Page size selector for single page too */}
             <div className="flex items-center gap-2">
               <label className="text-caption text-[var(--color-text-secondary)] whitespace-nowrap">
                 Per page:
@@ -627,10 +577,10 @@ export default function TransactionList({
                 onChange={(e) => handlePageSizeChange(parseInt(e.target.value, 10))}
                 className="input py-1 px-2 text-body"
               >
-                <option value={10}>10</option>
-                <option value={20}>20</option>
+                <option value={25}>25</option>
                 <option value={50}>50</option>
                 <option value={100}>100</option>
+                <option value={200}>200</option>
               </select>
             </div>
           </div>
@@ -639,3 +589,4 @@ export default function TransactionList({
     </div>
   );
 }
+

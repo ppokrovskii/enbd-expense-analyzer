@@ -397,6 +397,124 @@ def get_filter_options(
     }
 
 
+class MerchantSummary(BaseModel):
+    """Summary of transactions grouped by merchant."""
+    merchant: str
+    category: Optional[str]
+    transaction_count: int
+    total_amount: Decimal
+    first_date: date
+    last_date: date
+
+
+class MerchantListResponse(BaseModel):
+    """Response model for paginated merchant list."""
+    merchants: List[MerchantSummary]
+    total: int
+    total_amount: float
+    page: int
+    page_size: int
+
+
+@router.get("/merchants", response_model=MerchantListResponse)
+def get_merchants(
+    db: Session = Depends(get_db),
+    user_id: str = Depends(get_user_id),
+    person_id: Optional[int] = Depends(get_person_id),
+    start_date: Optional[date] = Query(None, description="Filter by start date (inclusive)"),
+    end_date: Optional[date] = Query(None, description="Filter by end date (inclusive)"),
+    categories: Optional[List[str]] = Query(None, description="Filter by categories"),
+    accounts: Optional[List[str]] = Query(None, description="Filter by accounts"),
+    merchant: Optional[str] = Query(None, description="Filter by merchant substring"),
+    page: int = Query(1, ge=1, description="Page number"),
+    page_size: int = Query(50, ge=1, le=500, description="Number of items per page"),
+    sort_by: str = Query('total_amount', description="Sort by: 'merchant', 'total_amount', 'transaction_count', 'last_date'"),
+    sort_order: str = Query('desc', description="Sort order: 'asc' or 'desc'")
+):
+    """Get transactions grouped by merchant with aggregated stats."""
+    # Build base query with filters
+    base_filter = [Transaction.user_id == user_id]
+    
+    if person_id is not None:
+        base_filter.append(Transaction.person_id == person_id)
+    if start_date:
+        base_filter.append(Transaction.date >= start_date)
+    if end_date:
+        base_filter.append(Transaction.date <= end_date)
+    if categories:
+        base_filter.append(Transaction.category.in_(categories))
+    if accounts:
+        base_filter.append(Transaction.account.in_(accounts))
+    if merchant:
+        base_filter.append(Transaction.merchant.ilike(f"%{merchant}%"))
+    
+    # Exclude null/empty merchants
+    base_filter.append(Transaction.merchant.isnot(None))
+    base_filter.append(Transaction.merchant != '')
+    
+    # Aggregate by merchant
+    query = db.query(
+        Transaction.merchant,
+        func.min(Transaction.category).label('category'),  # Get most common category (simplified)
+        func.count(Transaction.id).label('transaction_count'),
+        func.sum(func.abs(Transaction.amount_signed)).label('total_amount'),
+        func.min(Transaction.date).label('first_date'),
+        func.max(Transaction.date).label('last_date')
+    ).filter(
+        *base_filter
+    ).group_by(
+        Transaction.merchant
+    )
+    
+    # Get total count for pagination
+    count_subquery = query.subquery()
+    total = db.query(func.count()).select_from(count_subquery).scalar() or 0
+    
+    # Apply sorting
+    sort_column_map = {
+        'merchant': Transaction.merchant,
+        'total_amount': func.sum(func.abs(Transaction.amount_signed)),
+        'transaction_count': func.count(Transaction.id),
+        'last_date': func.max(Transaction.date)
+    }
+    sort_column = sort_column_map.get(sort_by, func.sum(func.abs(Transaction.amount_signed)))
+    
+    if sort_order == 'asc':
+        query = query.order_by(sort_column.asc())
+    else:
+        query = query.order_by(sort_column.desc())
+    
+    # Apply pagination
+    offset = (page - 1) * page_size
+    results = query.offset(offset).limit(page_size).all()
+    
+    # Calculate grand total (all merchants matching filter)
+    total_amount_query = db.query(
+        func.sum(func.abs(Transaction.amount_signed))
+    ).filter(*base_filter).scalar() or 0
+    
+    # Transform results
+    merchants = [
+        MerchantSummary(
+            merchant=row.merchant,
+            category=row.category,
+            transaction_count=row.transaction_count,
+            total_amount=row.total_amount or 0,
+            first_date=row.first_date,
+            last_date=row.last_date
+        )
+        for row in results
+    ]
+    
+    return MerchantListResponse(
+        merchants=merchants,
+        total=total,
+        total_amount=float(total_amount_query),
+        page=page,
+        page_size=page_size
+    )
+
+
 class UpdateTransactionCategoryRequest(BaseModel):
     """Request model for updating a transaction's category."""
     category: str
