@@ -1,502 +1,173 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { getApiHeaders } from "../utils/api";
-import MetricCard from "../components/ui/MetricCard";
-import SpendingChart from "../components/SpendingChart";
 import SkeletonLoader from "../components/ui/SkeletonLoader";
 
-interface FilterValues {
-  startDate: string;
-  endDate: string;
-}
-
-interface ReportStats {
-  total_income: number;
-  total_expenses: number;
-  net: number;
-  transaction_count: number;
-}
-
-interface CategoryBreakdown {
-  category: string;
-  total: number;
-  percentage: number;
-  transaction_count: number;
-}
-
-interface TopTransaction {
-  description: string;
-  amount: number;
-  date: string;
-}
-
-interface CategoryDetail {
-  category: string;
-  total: number;
-  count: number;
-  top_transactions: TopTransaction[];
-}
-
-interface RecurringTransaction {
+interface ReportListItem {
   id: string;
-  pattern_name: string;
-  merchant: string;
-  estimated_amount: number;
-  frequency: string;
-  occurrences: number;
-  last_seen_date: string;
-  annualized_cost: number;
+  name: string;
+  person_id: number | null;
+  person_name: string | null;
+  section_count: number;
+  created_at: string;
+  updated_at: string;
 }
 
-export default function ReportsPage() {
-  const [filters, setFilters] = useState<FilterValues>(() => {
-    // Default to current month
-    const today = new Date();
-    const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
-    const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-    
-    return {
-      startDate: firstDay.toISOString().split('T')[0],
-      endDate: lastDay.toISOString().split('T')[0]
-    };
-  });
+interface Person {
+  id: number;
+  name: string;
+  is_active: boolean;
+}
 
-  const [stats, setStats] = useState<ReportStats | null>(null);
-  const [categoryBreakdown, setCategoryBreakdown] = useState<CategoryBreakdown[]>([]);
-  const [categoryDetails, setCategoryDetails] = useState<CategoryDetail[]>([]);
-  const [loading, setLoading] = useState(false);
+export default function ReportsListPage() {
+  const router = useRouter();
+  const [reports, setReports] = useState<ReportListItem[]>([]);
+  const [persons, setPersons] = useState<Person[]>([]);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [filterPersonId, setFilterPersonId] = useState<string>("all");
+  const [creating, setCreating] = useState(false);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
 
-  // Summary takeaway state
-  const [summaryTakeaway, setSummaryTakeaway] = useState<string>("");
-  const [generatingSummary, setGeneratingSummary] = useState(false);
+  useEffect(() => {
+    fetchReports();
+    fetchPersons();
+  }, [filterPersonId]);
 
-  // Recurring transactions state
-  const [recurringTransactions, setRecurringTransactions] = useState<RecurringTransaction[]>([]);
-  const [detectingRecurring, setDetectingRecurring] = useState(false);
-  const [recurringLoaded, setRecurringLoaded] = useState(false);
-
-  // Trends & Anomalies state
-  const [trends, setTrends] = useState<string[]>([]);
-  const [generatingTrends, setGeneratingTrends] = useState(false);
-
-  // Key Insights state
-  const [insights, setInsights] = useState<string[]>([]);
-  const [generatingInsights, setGeneratingInsights] = useState(false);
-
-  // Chart groupBy state
-  const [groupBy, setGroupBy] = useState<'week' | 'month'>('month');
-
-  // Memoize chart filters to prevent unnecessary re-renders
-  const chartFilters = useMemo(() => ({
-    startDate: filters.startDate,
-    endDate: filters.endDate,
-    categories: [] as string[],
-    accounts: [] as string[],
-    merchant: '',
-    groupBy: groupBy
-  }), [filters.startDate, filters.endDate, groupBy]);
-
-  // Stable empty array for filteredCategories prop
-  const emptyCategories = useMemo(() => [] as string[], []);
-
-  // Callback for groupBy change
-  const handleGroupByChange = useCallback((value: 'week' | 'month') => {
-    setGroupBy(value);
-  }, []);
-
-  // Listen for person changes
   useEffect(() => {
     const handlePersonChange = () => {
-      fetchReportData();
-      // Reset AI-generated content when person changes
-      setSummaryTakeaway("");
-      setRecurringTransactions([]);
-      setRecurringLoaded(false);
-      setTrends([]);
-      setInsights([]);
+      fetchReports();
     };
-    
     window.addEventListener('personChanged', handlePersonChange);
     return () => window.removeEventListener('personChanged', handlePersonChange);
-  }, [filters]);
+  }, [filterPersonId]);
 
-  useEffect(() => {
-    fetchReportData();
-  }, [filters]);
+  const fetchPersons = async () => {
+    try {
+      const response = await fetch('http://localhost:8000/api/persons/', {
+        headers: getApiHeaders(),
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setPersons(data.persons || []);
+      }
+    } catch (err) {
+      console.error('Failed to fetch persons:', err);
+    }
+  };
 
-  const fetchReportData = async () => {
-    if (!filters.startDate || !filters.endDate) return;
-    
+  const fetchReports = async () => {
     setLoading(true);
     setError(null);
-
     try {
-      // Calculate period days
-      const start = new Date(filters.startDate);
-      const end = new Date(filters.endDate);
-      const periodDays = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
-
-      // Fetch summary stats
-      const statsParams = new URLSearchParams();
-      if (filters.startDate) statsParams.set('start_date', filters.startDate);
-      if (filters.endDate) statsParams.set('end_date', filters.endDate);
-
-      const statsResponse = await fetch(
-        `http://localhost:8000/api/stats/summary?${statsParams.toString()}`,
-        { headers: getApiHeaders() }
-      );
-
-      if (!statsResponse.ok) throw new Error('Failed to fetch stats');
-      const statsData = await statsResponse.json();
-      setStats(statsData);
-
-      // Fetch insights to get category breakdown
-      const insightsResponse = await fetch(
-        `http://localhost:8000/api/insights/generate?period_days=${periodDays}`,
-        { headers: getApiHeaders() }
-      );
-
-      if (insightsResponse.ok) {
-        const insightsData = await insightsResponse.json();
-        
-        // Extract category data from insights
-        const categoryInsight = insightsData.insights?.find(
-          (i: any) => i.type === 'category_analysis'
-        );
-        
-        if (categoryInsight?.data?.categories) {
-          // Transform to our format
-          const breakdown = categoryInsight.data.categories.map((cat: any) => ({
-            category: cat.category,
-            total: Math.abs(cat.amount),
-            percentage: cat.percentage,
-            transaction_count: cat.count || 0
-          }));
-          setCategoryBreakdown(breakdown.slice(0, 7));
-          
-          // Create detailed view
-          const details = breakdown.map((cat: any) => ({
-            category: cat.category,
-            total: cat.total,
-            count: cat.transaction_count,
-            top_transactions: []
-          }));
-          setCategoryDetails(details);
-        }
+      const params = new URLSearchParams();
+      if (filterPersonId !== "all") {
+        params.set('person_id', filterPersonId);
       }
-
+      
+      const response = await fetch(
+        `http://localhost:8000/api/reports/?${params.toString()}`,
+        { headers: getApiHeaders() }
+      );
+      
+      if (!response.ok) throw new Error('Failed to fetch reports');
+      
+      const data = await response.json();
+      setReports(data.reports || []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load report data');
+      setError(err instanceof Error ? err.message : 'Failed to load reports');
     } finally {
       setLoading(false);
     }
   };
 
-  // Generate AI Summary Takeaway
-  const generateSummaryTakeaway = async () => {
-    setGeneratingSummary(true);
+  const createReport = async () => {
+    setCreating(true);
     try {
-      const response = await fetch('http://localhost:8000/api/chat/quick', {
+      const response = await fetch('http://localhost:8000/api/reports/', {
         method: 'POST',
         headers: getApiHeaders(),
-        body: JSON.stringify({
-          message: `Generate a brief 2-3 sentence summary takeaway for a financial report covering ${filters.startDate} to ${filters.endDate}. Total income: ${stats?.total_income || 0} AED, Total expenses: ${stats?.total_expenses || 0} AED, Net: ${stats?.net || 0} AED. Keep it factual, no advice.`
-        })
+        body: JSON.stringify({}),
       });
-
-      if (response.ok) {
-        const data = await response.json();
-        setSummaryTakeaway(data.response || data.message || "Summary generated successfully.");
-      } else {
-        // Fallback to a simple generated summary
-        const net = stats?.net || 0;
-        const status = net >= 0 ? "positive" : "negative";
-        setSummaryTakeaway(
-          `During this period, total spending was ${formatCurrency(stats?.total_expenses || 0)} against income of ${formatCurrency(stats?.total_income || 0)}, resulting in a ${status} balance of ${formatCurrency(Math.abs(net))}.`
-        );
-      }
+      
+      if (!response.ok) throw new Error('Failed to create report');
+      
+      const report = await response.json();
+      router.push(`/reports/${report.id}`);
     } catch (err) {
-      // Fallback summary
-      setSummaryTakeaway(
-        `This report covers ${filters.startDate} to ${filters.endDate}. Review the sections below for detailed analysis.`
-      );
+      setError(err instanceof Error ? err.message : 'Failed to create report');
     } finally {
-      setGeneratingSummary(false);
+      setCreating(false);
     }
   };
 
-  // Detect Recurring Transactions
-  const detectRecurringTransactions = async () => {
-    setDetectingRecurring(true);
-    try {
-      const response = await fetch('http://localhost:8000/api/recurring/detect', {
-        method: 'POST',
-        headers: getApiHeaders(),
-        body: JSON.stringify({
-          start_date: filters.startDate,
-          end_date: filters.endDate
-        })
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        const patterns = data.recurring_groups || data.patterns || [];
-        
-        // Transform and calculate annualized cost
-        const transformed: RecurringTransaction[] = patterns.map((p: any) => {
-          let annualized = p.estimated_amount;
-          switch (p.frequency?.toLowerCase()) {
-            case 'weekly': annualized *= 52; break;
-            case 'monthly': annualized *= 12; break;
-            case 'quarterly': annualized *= 4; break;
-            case 'yearly': break;
-            default: annualized *= 12; // Default to monthly
-          }
-          return {
-            id: p.id || p.pattern_name,
-            pattern_name: p.pattern_name || p.merchant,
-            merchant: p.merchant,
-            estimated_amount: p.estimated_amount,
-            frequency: p.frequency || 'monthly',
-            occurrences: p.occurrences || 0,
-            last_seen_date: p.last_seen_date,
-            annualized_cost: annualized
-          };
-        });
-        
-        setRecurringTransactions(transformed);
-        setRecurringLoaded(true);
-      }
-    } catch (err) {
-      console.error('Failed to detect recurring:', err);
-    } finally {
-      setDetectingRecurring(false);
-    }
-  };
-
-  // Generate Trends & Anomalies
-  const generateTrends = async () => {
-    setGeneratingTrends(true);
-    try {
-      // First try the insights endpoint for spending trends
-      const start = new Date(filters.startDate);
-      const end = new Date(filters.endDate);
-      const periodDays = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
-
-      const response = await fetch(
-        `http://localhost:8000/api/insights/spending-trends?period_days=${periodDays}`,
-        { headers: getApiHeaders() }
-      );
-
-      if (response.ok) {
-        const data = await response.json();
-        const trendItems: string[] = [];
-        
-        // Extract trends from the response
-        if (data.trends && data.trends.length > 0) {
-          data.trends.forEach((t: any) => {
-            if (t.description) trendItems.push(t.description);
-          });
-        }
-        
-        // If no trends found, generate some based on data
-        if (trendItems.length === 0 && stats) {
-          if (stats.total_expenses > stats.total_income) {
-            trendItems.push(`Spending exceeded income by ${formatCurrency(stats.total_expenses - stats.total_income)} this period.`);
-          }
-          if (categoryBreakdown.length > 0) {
-            const topCat = categoryBreakdown[0];
-            trendItems.push(`${topCat.category} was the largest spending category at ${topCat.percentage.toFixed(1)}% of total expenses.`);
-          }
-          trendItems.push(`Total of ${stats.transaction_count} transactions recorded during this period.`);
-        }
-        
-        setTrends(trendItems.slice(0, 5));
-      }
-    } catch (err) {
-      // Fallback trends
-      if (stats) {
-        setTrends([
-          `Total spending: ${formatCurrency(stats.total_expenses)}`,
-          `Total income: ${formatCurrency(stats.total_income)}`,
-          `Net balance: ${formatCurrency(stats.net)}`
-        ]);
-      }
-    } finally {
-      setGeneratingTrends(false);
-    }
-  };
-
-  // Generate Key Insights
-  const generateInsights = async () => {
-    setGeneratingInsights(true);
-    try {
-      const start = new Date(filters.startDate);
-      const end = new Date(filters.endDate);
-      const periodDays = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
-
-      const response = await fetch(
-        `http://localhost:8000/api/insights/generate?period_days=${periodDays}`,
-        { headers: getApiHeaders() }
-      );
-
-      if (response.ok) {
-        const data = await response.json();
-        const insightItems: string[] = [];
-        
-        // Extract insights from the response
-        if (data.insights && data.insights.length > 0) {
-          data.insights.forEach((i: any) => {
-            if (i.description) insightItems.push(i.description);
-          });
-        }
-        
-        setInsights(insightItems.slice(0, 5));
-      }
-    } catch (err) {
-      // Fallback insights
-      setInsights([
-        "Review your spending patterns to identify areas for optimization.",
-        "Track your recurring expenses to ensure they're still necessary.",
-        "Compare this period with previous periods to spot trends."
-      ]);
-    } finally {
-      setGeneratingInsights(false);
-    }
-  };
-
-  const handleQuickFilter = (filterType: string) => {
-    const now = new Date();
-    let startYear: number, startMonth: number, startDay: number;
-    let endYear: number, endMonth: number, endDay: number;
-
-    switch (filterType) {
-      case 'this-month':
-        startYear = now.getFullYear();
-        startMonth = now.getMonth() + 1;
-        startDay = 1;
-        endYear = now.getFullYear();
-        endMonth = now.getMonth() + 1;
-        endDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-        break;
-      
-      case 'last-month':
-        const lastMonth = now.getMonth() === 0 ? 11 : now.getMonth() - 1;
-        const lastMonthYear = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
-        startYear = lastMonthYear;
-        startMonth = lastMonth + 1;
-        startDay = 1;
-        endYear = lastMonthYear;
-        endMonth = lastMonth + 1;
-        endDay = new Date(lastMonthYear, lastMonth + 1, 0).getDate();
-        break;
-      
-      case 'two-months-ago':
-        const twoMonthsAgo = (now.getMonth() - 2 + 12) % 12;
-        const twoMonthsAgoYear = now.getMonth() < 2 ? now.getFullYear() - 1 : now.getFullYear();
-        startYear = twoMonthsAgoYear;
-        startMonth = twoMonthsAgo + 1;
-        startDay = 1;
-        endYear = twoMonthsAgoYear;
-        endMonth = twoMonthsAgo + 1;
-        endDay = new Date(twoMonthsAgoYear, twoMonthsAgo + 1, 0).getDate();
-        break;
-      
-      case 'last-3-months':
-        const threeMonthsAgo = (now.getMonth() - 3 + 12) % 12;
-        const threeMonthsAgoYear = now.getMonth() < 3 ? now.getFullYear() - 1 : now.getFullYear();
-        startYear = threeMonthsAgoYear;
-        startMonth = threeMonthsAgo + 1;
-        startDay = 1;
-        endYear = now.getFullYear();
-        endMonth = now.getMonth() + 1;
-        endDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-        break;
-      
-      case 'this-year':
-        startYear = now.getFullYear();
-        startMonth = 1;
-        startDay = 1;
-        endYear = now.getFullYear();
-        endMonth = 12;
-        endDay = 31;
-        break;
-      
-      case 'last-year':
-        startYear = now.getFullYear() - 1;
-        startMonth = 1;
-        startDay = 1;
-        endYear = now.getFullYear() - 1;
-        endMonth = 12;
-        endDay = 31;
-        break;
-      
-      case 'last-7-days': {
-        const sevenDaysAgo = new Date(now);
-        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-        startYear = sevenDaysAgo.getFullYear();
-        startMonth = sevenDaysAgo.getMonth() + 1;
-        startDay = sevenDaysAgo.getDate();
-        endYear = now.getFullYear();
-        endMonth = now.getMonth() + 1;
-        endDay = now.getDate();
-        break;
-      }
-      
-      case 'last-30-days': {
-        const thirtyDaysAgo = new Date(now);
-        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-        startYear = thirtyDaysAgo.getFullYear();
-        startMonth = thirtyDaysAgo.getMonth() + 1;
-        startDay = thirtyDaysAgo.getDate();
-        endYear = now.getFullYear();
-        endMonth = now.getMonth() + 1;
-        endDay = now.getDate();
-        break;
-      }
-      
-      default:
-        return;
-    }
-
-    // Reset AI-generated content when filters change
-    setSummaryTakeaway("");
-    setRecurringTransactions([]);
-    setRecurringLoaded(false);
-    setTrends([]);
-    setInsights([]);
-
-    setFilters({
-      startDate: `${startYear}-${String(startMonth).padStart(2, '0')}-${String(startDay).padStart(2, '0')}`,
-      endDate: `${endYear}-${String(endMonth).padStart(2, '0')}-${String(endDay).padStart(2, '0')}`
-    });
-  };
-
-  const getQuickFilterLabel = (filterType: string): string => {
-    const now = new Date();
-    const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
-      'July', 'August', 'September', 'October', 'November', 'December'];
+  const deleteReport = async (reportId: string) => {
+    if (!confirm('Are you sure you want to delete this report?')) return;
     
-    switch (filterType) {
-      case 'this-month':
-        return monthNames[now.getMonth()];
-      case 'last-month':
-        return monthNames[(now.getMonth() - 1 + 12) % 12];
-      case 'two-months-ago':
-        return monthNames[(now.getMonth() - 2 + 12) % 12];
-      default:
-        return filterType;
+    try {
+      const response = await fetch(`http://localhost:8000/api/reports/${reportId}`, {
+        method: 'DELETE',
+        headers: getApiHeaders(),
+      });
+      
+      if (!response.ok) throw new Error('Failed to delete report');
+      
+      setReports(reports.filter(r => r.id !== reportId));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete report');
     }
   };
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'AED',
-      minimumFractionDigits: 2,
-    }).format(Math.abs(amount));
+  const duplicateReport = async (reportId: string) => {
+    try {
+      const response = await fetch(`http://localhost:8000/api/reports/${reportId}/duplicate`, {
+        method: 'POST',
+        headers: getApiHeaders(),
+      });
+      
+      if (!response.ok) throw new Error('Failed to duplicate report');
+      
+      await fetchReports();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to duplicate report');
+    }
+  };
+
+  const startRename = (report: ReportListItem) => {
+    setRenamingId(report.id);
+    setRenameValue(report.name);
+  };
+
+  const cancelRename = () => {
+    setRenamingId(null);
+    setRenameValue("");
+  };
+
+  const saveRename = async (reportId: string) => {
+    if (!renameValue.trim()) {
+      cancelRename();
+      return;
+    }
+    
+    try {
+      const response = await fetch(`http://localhost:8000/api/reports/${reportId}`, {
+        method: 'PUT',
+        headers: getApiHeaders(),
+        body: JSON.stringify({ name: renameValue.trim() }),
+      });
+      
+      if (!response.ok) throw new Error('Failed to rename report');
+      
+      setReports(reports.map(r => 
+        r.id === reportId ? { ...r, name: renameValue.trim() } : r
+      ));
+      cancelRename();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to rename report');
+    }
   };
 
   const formatDate = (dateString: string) => {
@@ -504,619 +175,288 @@ export default function ReportsPage() {
       year: 'numeric',
       month: 'short',
       day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
     });
   };
 
-  const formatFrequency = (freq: string) => {
-    return freq.charAt(0).toUpperCase() + freq.slice(1).toLowerCase();
-  };
-
-  const exportPDF = async () => {
-    try {
-      const response = await fetch('http://localhost:8000/api/reports/generate', {
-        method: 'POST',
-        headers: getApiHeaders(),
-        body: JSON.stringify({
-          report_type: 'monthly_summary',
-          report_format: 'pdf',
-          period_start: filters.startDate,
-          period_end: filters.endDate,
-        }),
-      });
-
-      if (!response.ok) throw new Error('Failed to generate PDF');
-
-      const report = await response.json();
-      
-      // Download the generated report
-      const downloadResponse = await fetch(
-        `http://localhost:8000/api/reports/${report.id}/download`,
-        { headers: getApiHeaders() }
-      );
-
-      if (!downloadResponse.ok) throw new Error('Failed to download PDF');
-
-      const blob = await downloadResponse.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${report.title}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to export PDF');
-    }
-  };
-
-  const exportExcel = async () => {
-    try {
-      const response = await fetch('http://localhost:8000/api/reports/generate', {
-        method: 'POST',
-        headers: getApiHeaders(),
-        body: JSON.stringify({
-          report_type: 'monthly_summary',
-          report_format: 'excel',
-          period_start: filters.startDate,
-          period_end: filters.endDate,
-        }),
-      });
-
-      if (!response.ok) throw new Error('Failed to generate Excel');
-
-      const report = await response.json();
-      
-      // Download the generated report
-      const downloadResponse = await fetch(
-        `http://localhost:8000/api/reports/${report.id}/download`,
-        { headers: getApiHeaders() }
-      );
-
-      if (!downloadResponse.ok) throw new Error('Failed to download Excel');
-
-      const blob = await downloadResponse.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${report.title}.xlsx`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to export Excel');
-    }
-  };
-
-  // Calculate totals for recurring
-  const totalMonthlyRecurring = recurringTransactions
-    .filter(r => r.frequency.toLowerCase() === 'monthly')
-    .reduce((sum, r) => sum + r.estimated_amount, 0);
-  const totalAnnualizedRecurring = recurringTransactions
-    .reduce((sum, r) => sum + r.annualized_cost, 0);
+  // Group reports by person
+  const groupedReports = reports.reduce((acc, report) => {
+    const key = report.person_name || 'No Person';
+    if (!acc[key]) acc[key] = [];
+    acc[key].push(report);
+    return acc;
+  }, {} as Record<string, ReportListItem[]>);
 
   return (
     <div className="space-y-6">
-      {/* Page Title */}
-      <div>
-        <h1 className="text-title text-[var(--color-text-primary)]">Financial Reports</h1>
-        <p className="text-body text-[var(--color-text-secondary)] mt-1">
-          Generate comprehensive reports for your financial analysis
-        </p>
+      {/* Page Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-title text-[var(--color-text-primary)]">Reports</h1>
+          <p className="text-body text-[var(--color-text-secondary)] mt-1">
+            Create and manage financial reports across all persons
+          </p>
+        </div>
+        <button
+          onClick={createReport}
+          disabled={creating}
+          className="btn btn-primary flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {creating ? (
+            <>
+              <svg className="w-5 h-5 animate-spin" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+              </svg>
+              Creating...
+            </>
+          ) : (
+            <>
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              New Report
+            </>
+          )}
+        </button>
       </div>
 
       {/* Error Alert */}
       {error && (
         <div className="card p-4 bg-red-50 border border-red-200">
           <p className="text-body text-red-800">{error}</p>
+          <button 
+            onClick={() => setError(null)}
+            className="mt-2 text-caption text-red-600 hover:underline"
+          >
+            Dismiss
+          </button>
         </div>
       )}
 
-      {/* Date Filters */}
-      <div className="card p-6 space-y-4">
-        {/* Quick Date Filters */}
-        <div>
-          <label className="block text-caption text-[var(--color-text-secondary)] mb-2">
-            Quick Filters
+      {/* Filters */}
+      <div className="card p-4">
+        <div className="flex items-center gap-4">
+          <label className="text-body text-[var(--color-text-secondary)]">
+            Filter by Person:
           </label>
-          <div className="flex flex-wrap gap-2">
-            <button
-              onClick={() => handleQuickFilter('this-month')}
-              className="px-3 py-1.5 text-caption rounded-lg bg-[var(--color-bg-tertiary)] text-[var(--color-text-primary)] hover:bg-[var(--color-primary)] hover:text-white transition-apple"
-            >
-              {getQuickFilterLabel('this-month')}
-            </button>
-            <button
-              onClick={() => handleQuickFilter('last-month')}
-              className="px-3 py-1.5 text-caption rounded-lg bg-[var(--color-bg-tertiary)] text-[var(--color-text-primary)] hover:bg-[var(--color-primary)] hover:text-white transition-apple"
-            >
-              {getQuickFilterLabel('last-month')}
-            </button>
-            <button
-              onClick={() => handleQuickFilter('two-months-ago')}
-              className="px-3 py-1.5 text-caption rounded-lg bg-[var(--color-bg-tertiary)] text-[var(--color-text-primary)] hover:bg-[var(--color-primary)] hover:text-white transition-apple"
-            >
-              {getQuickFilterLabel('two-months-ago')}
-            </button>
-            <span className="border-l border-[var(--color-border-light)] mx-1"></span>
-            <button
-              onClick={() => handleQuickFilter('last-7-days')}
-              className="px-3 py-1.5 text-caption rounded-lg bg-[var(--color-bg-tertiary)] text-[var(--color-text-primary)] hover:bg-[var(--color-primary)] hover:text-white transition-apple"
-            >
-              Last 7 Days
-            </button>
-            <button
-              onClick={() => handleQuickFilter('last-30-days')}
-              className="px-3 py-1.5 text-caption rounded-lg bg-[var(--color-bg-tertiary)] text-[var(--color-text-primary)] hover:bg-[var(--color-primary)] hover:text-white transition-apple"
-            >
-              Last 30 Days
-            </button>
-            <button
-              onClick={() => handleQuickFilter('last-3-months')}
-              className="px-3 py-1.5 text-caption rounded-lg bg-[var(--color-bg-tertiary)] text-[var(--color-text-primary)] hover:bg-[var(--color-primary)] hover:text-white transition-apple"
-            >
-              Last 3 Months
-            </button>
-            <button
-              onClick={() => handleQuickFilter('this-year')}
-              className="px-3 py-1.5 text-caption rounded-lg bg-[var(--color-bg-tertiary)] text-[var(--color-text-primary)] hover:bg-[var(--color-primary)] hover:text-white transition-apple"
-            >
-              This Year
-            </button>
-            <button
-              onClick={() => handleQuickFilter('last-year')}
-              className="px-3 py-1.5 text-caption rounded-lg bg-[var(--color-bg-tertiary)] text-[var(--color-text-primary)] hover:bg-[var(--color-primary)] hover:text-white transition-apple"
-            >
-              Last Year
-            </button>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* Date Range */}
-          <div>
-            <label className="block text-caption text-[var(--color-text-secondary)] mb-2">
-              From Date
-            </label>
-            <input
-              type="date"
-              value={filters.startDate}
-              onChange={(e) => setFilters({ ...filters, startDate: e.target.value })}
-              className="input"
-            />
-          </div>
-          <div>
-            <label className="block text-caption text-[var(--color-text-secondary)] mb-2">
-              To Date
-            </label>
-            <input
-              type="date"
-              value={filters.endDate}
-              onChange={(e) => setFilters({ ...filters, endDate: e.target.value })}
-              className="input"
-            />
-          </div>
-        </div>
-
-        {/* Export Buttons */}
-        <div className="flex items-center gap-3 pt-4 border-t border-[var(--color-border-light)]">
-          <button
-            onClick={exportPDF}
-            disabled={loading}
-            className="btn btn-primary flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+          <select
+            value={filterPersonId}
+            onChange={(e) => setFilterPersonId(e.target.value)}
+            className="input w-auto"
           >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-            </svg>
-            Export PDF
-          </button>
+            <option value="all">All Persons</option>
+            {persons.map((person) => (
+              <option key={person.id} value={person.id}>
+                {person.name} {person.is_active ? '(Active)' : ''}
+              </option>
+            ))}
+          </select>
+          <span className="text-caption text-[var(--color-text-tertiary)]">
+            {reports.length} report{reports.length !== 1 ? 's' : ''}
+          </span>
+        </div>
+      </div>
+
+      {/* Reports List */}
+      {loading ? (
+        <SkeletonLoader variant="list" count={3} />
+      ) : reports.length === 0 ? (
+        <div className="card p-12 text-center">
+          <svg className="w-16 h-16 mx-auto text-[var(--color-text-tertiary)] mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          </svg>
+          <h3 className="text-heading text-[var(--color-text-primary)] mb-2">
+            No reports yet
+          </h3>
+          <p className="text-body text-[var(--color-text-secondary)] mb-6">
+            Create your first financial report to get started.
+          </p>
           <button
-            onClick={exportExcel}
-            disabled={loading}
-            className="btn btn-secondary flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            onClick={createReport}
+            disabled={creating}
+            className="btn btn-primary"
           >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-            </svg>
-            Export Excel
+            Create Your First Report
           </button>
         </div>
-      </div>
-
-      {/* Section 1: Summary */}
-      <div>
-        <h2 className="text-heading text-[var(--color-text-primary)] mb-4">1. Summary</h2>
-        
-        {/* Summary Totals */}
-        {loading ? (
-          <SkeletonLoader variant="metric" />
-        ) : stats ? (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-            <MetricCard
-              title="Total Spending"
-              value={stats.total_expenses}
-              format="currency"
-              gradient
-              gradientType="expense"
-              icon={
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+      ) : filterPersonId === "all" ? (
+        // Grouped view
+        <div className="space-y-6">
+          {Object.entries(groupedReports).map(([personName, personReports]) => (
+            <div key={personName}>
+              <h2 className="text-heading text-[var(--color-text-primary)] mb-3 flex items-center gap-2">
+                <svg className="w-5 h-5 text-[var(--color-primary)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                 </svg>
-              }
-            />
-            <MetricCard
-              title="Total Income"
-              value={stats.total_income}
-              format="currency"
-              gradient
-              gradientType="income"
-              icon={
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              }
-            />
-            <MetricCard
-              title="Net Balance"
-              value={stats.net}
-              format="currency"
-              gradient
-              gradientType={stats.net >= 0 ? "success" : "expense"}
-              changeType={stats.net >= 0 ? "increase" : "decrease"}
-              icon={
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                </svg>
-              }
-            />
-          </div>
-        ) : null}
-
-        {/* Summary Takeaway */}
-        <div className="card p-6">
-          <div className="flex items-center justify-between mb-3">
-            <label className="text-body font-medium text-[var(--color-text-primary)]">
-              Summary Takeaway
-            </label>
-            <button
-              onClick={generateSummaryTakeaway}
-              disabled={generatingSummary || !stats}
-              className="btn btn-secondary text-caption py-1.5 px-3 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {generatingSummary ? (
-                <>
-                  <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
-                  </svg>
-                  Generating...
-                </>
-              ) : (
-                <>
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                  </svg>
-                  Generate with AI
-                </>
-              )}
-            </button>
-          </div>
-          <textarea
-            value={summaryTakeaway}
-            onChange={(e) => setSummaryTakeaway(e.target.value)}
-            placeholder="Click 'Generate with AI' to create a summary, or write your own takeaway..."
-            className="input min-h-[100px] resize-y"
-          />
-        </div>
-      </div>
-
-      {/* Section 2: Expense Overview Chart */}
-      <div>
-        <h2 className="text-heading text-[var(--color-text-primary)] mb-4">2. Expense Overview</h2>
-        <SpendingChart
-          filters={chartFilters}
-          onGroupByChange={handleGroupByChange}
-          filterMode="none"
-          filteredCategories={emptyCategories}
-          allAvailableCategories={emptyCategories}
-        />
-      </div>
-
-      {/* Section 3: Top Categories */}
-      <div>
-        <h2 className="text-heading text-[var(--color-text-primary)] mb-4">3. Top Spending Categories</h2>
-        {!loading && categoryBreakdown.length > 0 ? (
-          <div className="card p-6">
-            <div className="space-y-4">
-              {categoryBreakdown.map((cat, index) => (
-                <div key={index} className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-body font-medium text-[var(--color-text-primary)]">
-                      {cat.category || 'Uncategorized'}
-                    </span>
-                    <div className="flex items-center gap-3">
-                      <span className="text-caption text-[var(--color-text-secondary)]">
-                        {cat.percentage.toFixed(1)}%
-                      </span>
-                      <span className="text-body font-semibold text-[var(--color-text-primary)]">
-                        {formatCurrency(cat.total)}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="w-full bg-[var(--color-bg-tertiary)] rounded-full h-2">
-                    <div
-                      className="bg-gradient-to-r from-[var(--color-primary)] to-[var(--color-primary-hover)] h-2 rounded-full transition-all duration-500"
-                      style={{ width: `${Math.min(cat.percentage, 100)}%` }}
-                    />
-                  </div>
-                  <p className="text-caption text-[var(--color-text-secondary)]">
-                    {cat.transaction_count} transactions
-                  </p>
-                </div>
-              ))}
-            </div>
-          </div>
-        ) : (
-          <div className="card p-6 text-center text-[var(--color-text-secondary)]">
-            {loading ? "Loading categories..." : "No category data available for this period."}
-          </div>
-        )}
-      </div>
-
-      {/* Section 4: Subscriptions & Recurring */}
-      <div>
-        <h2 className="text-heading text-[var(--color-text-primary)] mb-4">4. Subscriptions & Recurring</h2>
-        <div className="card p-6">
-          {!recurringLoaded ? (
-            <div className="text-center py-6">
-              <p className="text-body text-[var(--color-text-secondary)] mb-4">
-                Detect recurring transactions to see your subscriptions and regular expenses.
-              </p>
-              <button
-                onClick={detectRecurringTransactions}
-                disabled={detectingRecurring}
-                className="btn btn-primary flex items-center gap-2 mx-auto disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {detectingRecurring ? (
-                  <>
-                    <svg className="w-5 h-5 animate-spin" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
-                    </svg>
-                    Detecting...
-                  </>
-                ) : (
-                  <>
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                    </svg>
-                    Detect Recurring Transactions
-                  </>
-                )}
-              </button>
-            </div>
-          ) : recurringTransactions.length > 0 ? (
-            <>
-              {/* Summary */}
-              <div className="grid grid-cols-2 gap-4 mb-6 p-4 bg-[var(--color-bg-secondary)] rounded-lg">
-                <div>
-                  <p className="text-caption text-[var(--color-text-secondary)]">Monthly Total</p>
-                  <p className="text-heading text-[var(--color-text-primary)]">{formatCurrency(totalMonthlyRecurring)}</p>
-                </div>
-                <div>
-                  <p className="text-caption text-[var(--color-text-secondary)]">Annualized Total</p>
-                  <p className="text-heading text-[var(--color-text-primary)]">{formatCurrency(totalAnnualizedRecurring)}</p>
-                </div>
-              </div>
-              
-              {/* List */}
+                {personName}
+              </h2>
               <div className="space-y-3">
-                {recurringTransactions.map((recurring, index) => (
-                  <div
-                    key={recurring.id || index}
-                    className="flex items-center justify-between py-3 border-b border-[var(--color-border-light)] last:border-b-0"
-                  >
-                    <div className="flex-1">
-                      <p className="text-body font-medium text-[var(--color-text-primary)]">
-                        {recurring.pattern_name || recurring.merchant}
-                      </p>
-                      <p className="text-caption text-[var(--color-text-secondary)]">
-                        {formatFrequency(recurring.frequency)} • {recurring.occurrences} occurrences
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-body font-semibold text-[var(--color-text-primary)]">
-                        {formatCurrency(recurring.estimated_amount)}/{recurring.frequency.toLowerCase() === 'monthly' ? 'mo' : recurring.frequency.slice(0, 2)}
-                      </p>
-                      <p className="text-caption text-[var(--color-text-secondary)]">
-                        {formatCurrency(recurring.annualized_cost)}/year
-                      </p>
-                    </div>
-                  </div>
+                {personReports.map((report) => (
+                  <ReportCard
+                    key={report.id}
+                    report={report}
+                    isRenaming={renamingId === report.id}
+                    renameValue={renameValue}
+                    onRenameValueChange={setRenameValue}
+                    onStartRename={() => startRename(report)}
+                    onCancelRename={cancelRename}
+                    onSaveRename={() => saveRename(report.id)}
+                    onOpen={() => router.push(`/reports/${report.id}`)}
+                    onDuplicate={() => duplicateReport(report.id)}
+                    onDelete={() => deleteReport(report.id)}
+                    formatDate={formatDate}
+                  />
                 ))}
               </div>
-              
-              {/* Re-detect button */}
-              <div className="mt-4 pt-4 border-t border-[var(--color-border-light)]">
-                <button
-                  onClick={detectRecurringTransactions}
-                  disabled={detectingRecurring}
-                  className="text-caption text-[var(--color-primary)] hover:underline disabled:opacity-50"
-                >
-                  {detectingRecurring ? "Detecting..." : "Re-detect recurring transactions"}
-                </button>
-              </div>
-            </>
-          ) : (
-            <div className="text-center py-6">
-              <p className="text-body text-[var(--color-text-secondary)]">
-                No recurring transactions detected for this period.
-              </p>
+            </div>
+          ))}
+        </div>
+      ) : (
+        // Flat view
+        <div className="space-y-3">
+          {reports.map((report) => (
+            <ReportCard
+              key={report.id}
+              report={report}
+              isRenaming={renamingId === report.id}
+              renameValue={renameValue}
+              onRenameValueChange={setRenameValue}
+              onStartRename={() => startRename(report)}
+              onCancelRename={cancelRename}
+              onSaveRename={() => saveRename(report.id)}
+              onOpen={() => router.push(`/reports/${report.id}`)}
+              onDuplicate={() => duplicateReport(report.id)}
+              onDelete={() => deleteReport(report.id)}
+              formatDate={formatDate}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface ReportCardProps {
+  report: ReportListItem;
+  isRenaming: boolean;
+  renameValue: string;
+  onRenameValueChange: (value: string) => void;
+  onStartRename: () => void;
+  onCancelRename: () => void;
+  onSaveRename: () => void;
+  onOpen: () => void;
+  onDuplicate: () => void;
+  onDelete: () => void;
+  formatDate: (date: string) => string;
+}
+
+function ReportCard({
+  report,
+  isRenaming,
+  renameValue,
+  onRenameValueChange,
+  onStartRename,
+  onCancelRename,
+  onSaveRename,
+  onOpen,
+  onDuplicate,
+  onDelete,
+  formatDate,
+}: ReportCardProps) {
+  return (
+    <div className="card p-4 hover:shadow-md transition-shadow">
+      <div className="flex items-center justify-between">
+        <div className="flex-1 min-w-0">
+          {isRenaming ? (
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={renameValue}
+                onChange={(e) => onRenameValueChange(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') onSaveRename();
+                  if (e.key === 'Escape') onCancelRename();
+                }}
+                className="input py-1 px-2 text-body"
+                autoFocus
+              />
               <button
-                onClick={detectRecurringTransactions}
-                disabled={detectingRecurring}
-                className="mt-3 text-caption text-[var(--color-primary)] hover:underline"
+                onClick={onSaveRename}
+                className="p-1 text-green-600 hover:bg-green-50 rounded"
               >
-                Try again
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+              </button>
+              <button
+                onClick={onCancelRename}
+                className="p-1 text-gray-600 hover:bg-gray-50 rounded"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
               </button>
             </div>
-          )}
-        </div>
-      </div>
-
-      {/* Section 5: Trends & Anomalies */}
-      <div>
-        <h2 className="text-heading text-[var(--color-text-primary)] mb-4">5. Trends & Anomalies</h2>
-        <div className="card p-6">
-          <div className="flex items-center justify-between mb-4">
-            <p className="text-caption text-[var(--color-text-secondary)]">
-              AI-generated analysis of spending patterns and unusual transactions
-            </p>
-            <button
-              onClick={generateTrends}
-              disabled={generatingTrends}
-              className="btn btn-secondary text-caption py-1.5 px-3 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {generatingTrends ? (
-                <>
-                  <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
-                  </svg>
-                  Generating...
-                </>
-              ) : (
-                <>
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
-                  </svg>
-                  Generate Trends
-                </>
-              )}
-            </button>
-          </div>
-          
-          {trends.length > 0 ? (
-            <ul className="space-y-3">
-              {trends.map((trend, index) => (
-                <li key={index} className="flex items-start gap-3">
-                  <span className="flex-shrink-0 w-6 h-6 rounded-full bg-[var(--color-primary)]/10 text-[var(--color-primary)] flex items-center justify-center text-caption font-medium">
-                    {index + 1}
-                  </span>
-                  <input
-                    type="text"
-                    value={trend}
-                    onChange={(e) => {
-                      const newTrends = [...trends];
-                      newTrends[index] = e.target.value;
-                      setTrends(newTrends);
-                    }}
-                    className="flex-1 bg-transparent border-b border-transparent hover:border-[var(--color-border)] focus:border-[var(--color-primary)] focus:outline-none py-1 text-body text-[var(--color-text-primary)]"
-                  />
-                </li>
-              ))}
-            </ul>
           ) : (
-            <p className="text-body text-[var(--color-text-secondary)] italic text-center py-4">
-              Click "Generate Trends" to analyze spending patterns and identify anomalies.
-            </p>
-          )}
-        </div>
-      </div>
-
-      {/* Section 6: Key Insights */}
-      <div>
-        <h2 className="text-heading text-[var(--color-text-primary)] mb-4">6. Key Insights</h2>
-        <div className="card p-6">
-          <div className="flex items-center justify-between mb-4">
-            <p className="text-caption text-[var(--color-text-secondary)]">
-              AI-generated insights about your financial data
-            </p>
             <button
-              onClick={generateInsights}
-              disabled={generatingInsights}
-              className="btn btn-secondary text-caption py-1.5 px-3 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              onClick={onOpen}
+              className="text-left group"
             >
-              {generatingInsights ? (
-                <>
-                  <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
-                  </svg>
-                  Generating...
-                </>
-              ) : (
-                <>
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-                  </svg>
-                  Generate Insights
-                </>
-              )}
+              <h3 className="text-body font-semibold text-[var(--color-text-primary)] group-hover:text-[var(--color-primary)] transition-colors truncate">
+                {report.name}
+              </h3>
             </button>
-          </div>
-          
-          {insights.length > 0 ? (
-            <ul className="space-y-3">
-              {insights.map((insight, index) => (
-                <li key={index} className="flex items-start gap-3">
-                  <div className="flex-shrink-0 p-1.5 rounded-lg bg-[var(--color-primary)]/10">
-                    <svg className="w-4 h-4 text-[var(--color-primary)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-                    </svg>
-                  </div>
-                  <input
-                    type="text"
-                    value={insight}
-                    onChange={(e) => {
-                      const newInsights = [...insights];
-                      newInsights[index] = e.target.value;
-                      setInsights(newInsights);
-                    }}
-                    className="flex-1 bg-transparent border-b border-transparent hover:border-[var(--color-border)] focus:border-[var(--color-primary)] focus:outline-none py-1 text-body text-[var(--color-text-primary)]"
-                  />
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="text-body text-[var(--color-text-secondary)] italic text-center py-4">
-              Click "Generate Insights" to get AI-powered analysis of your financial data.
-            </p>
           )}
+          <div className="flex items-center gap-4 mt-1">
+            <span className="text-caption text-[var(--color-text-tertiary)]">
+              {report.section_count} section{report.section_count !== 1 ? 's' : ''}
+            </span>
+            <span className="text-caption text-[var(--color-text-tertiary)]">
+              Updated {formatDate(report.updated_at)}
+            </span>
+          </div>
         </div>
-      </div>
-
-      {/* Section 7: Next Steps */}
-      <div>
-        <h2 className="text-heading text-[var(--color-text-primary)] mb-4">7. Next Steps</h2>
-        <div className="card p-6">
-          <ul className="space-y-3">
-            <li className="flex items-start gap-3">
-              <svg className="w-5 h-5 text-[var(--color-primary)] mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-              </svg>
-              <p className="text-body text-[var(--color-text-secondary)]">
-                Review your top 2-3 spending categories to identify potential savings opportunities
-              </p>
-            </li>
-            <li className="flex items-start gap-3">
-              <svg className="w-5 h-5 text-[var(--color-primary)] mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-              </svg>
-              <p className="text-body text-[var(--color-text-secondary)]">
-                Check recurring charges for subscriptions you may no longer need
-              </p>
-            </li>
-            <li className="flex items-start gap-3">
-              <svg className="w-5 h-5 text-[var(--color-primary)] mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-              </svg>
-              <p className="text-body text-[var(--color-text-secondary)]">
-                Re-run this report after a few months to track your progress and spending trends
-              </p>
-            </li>
-          </ul>
+        
+        <div className="flex items-center gap-1 ml-4">
+          <button
+            onClick={onOpen}
+            className="p-2 text-[var(--color-text-secondary)] hover:text-[var(--color-primary)] hover:bg-[var(--color-bg-tertiary)] rounded-lg transition-colors"
+            title="Open"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+            </svg>
+          </button>
+          <button
+            onClick={onStartRename}
+            className="p-2 text-[var(--color-text-secondary)] hover:text-[var(--color-primary)] hover:bg-[var(--color-bg-tertiary)] rounded-lg transition-colors"
+            title="Rename"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+            </svg>
+          </button>
+          <button
+            onClick={onDuplicate}
+            className="p-2 text-[var(--color-text-secondary)] hover:text-[var(--color-primary)] hover:bg-[var(--color-bg-tertiary)] rounded-lg transition-colors"
+            title="Duplicate"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+            </svg>
+          </button>
+          <button
+            onClick={onDelete}
+            className="p-2 text-[var(--color-text-secondary)] hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+            title="Delete"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
+          </button>
         </div>
       </div>
     </div>

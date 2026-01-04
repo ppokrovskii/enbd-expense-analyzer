@@ -16,7 +16,7 @@ from app.domains.jobs.models import BackgroundJob
 from app.domains.persons.models import Person
 from app.domains.recurring.models import RecurringGroup, RecurringOccurrence
 from app.domains.insights.models import Insight
-from app.domains.reports.models import Report
+from app.domains.reports.models import Report, ReportSection
 
 
 # Ensure Docker client can connect (for both users)
@@ -94,4 +94,10 @@ def test_db(test_engine):
     
     # Clear dependency overrides
     fastapi_app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def test_user():
+    """Standard test user ID."""
+    return "test-user-id"
 

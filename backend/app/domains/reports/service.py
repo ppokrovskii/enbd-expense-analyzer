@@ -1,633 +1,526 @@
-"""Service for generating financial reports (PDF/Excel)."""
-from sqlalchemy.orm import Session
+"""Service for managing reports and sections."""
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func
-from typing import List, Dict, Any, Optional, Tuple
-from datetime import date, datetime, timedelta
-from collections import defaultdict
-from pathlib import Path
+from typing import List, Optional, Dict, Any
+from datetime import datetime, date
 import uuid
-import io
-import os
 
-from app.domains.transactions.models import Transaction
-from app.domains.recurring.service import RecurringDetectionService
-from app.domains.insights.service import InsightsService
 from app.domains.reports.models import (
     Report,
-    ReportFormat,
-    ReportType,
-    ReportStatus,
-    ReportData,
-    CategorySummary,
-    PeriodSummary,
+    ReportSection,
+    SectionType,
+    SectionFilters,
+    SectionContent,
+    MoveDirection,
 )
-
-
-# Report output directory
-REPORTS_DIR = Path(__file__).parent.parent.parent / "generated_reports"
+from app.domains.persons.models import Person
 
 
 class ReportService:
-    """Service for generating financial reports."""
-    
+    """Service for managing reports and their sections."""
+
+    # Section type display names
+    SECTION_TYPE_NAMES = {
+        SectionType.SUMMARY.value: "Summary",
+        SectionType.EXPENSE_OVERVIEW.value: "Expense Overview",
+        SectionType.TOP_CATEGORIES.value: "Top Spending Categories",
+        SectionType.CATEGORY_DETAILS.value: "Category Details",
+        SectionType.RECURRING.value: "Subscriptions & Recurring",
+        SectionType.TRENDS.value: "Trends & Anomalies",
+        SectionType.INSIGHTS.value: "Key Insights",
+    }
+
     @classmethod
-    def generate_report(
+    def create_report(
         cls,
         db: Session,
         user_id: str,
-        report_type: ReportType,
-        report_format: ReportFormat,
-        period_start: date,
-        period_end: date,
-        person_id: Optional[str] = None,
-        title: Optional[str] = None,
+        person_id: Optional[int] = None,
+        name: Optional[str] = None,
     ) -> Report:
         """
-        Generate a financial report.
+        Create a new report with auto-generated name and default Summary section.
         
         Args:
             db: Database session
             user_id: User identifier
-            report_type: Type of report
-            report_format: Output format (PDF, Excel, JSON)
-            period_start: Start date of report period
-            period_end: End date of report period
-            person_id: Optional person ID for filtering
-            title: Optional custom title
+            person_id: Person ID (uses active person if not provided)
+            name: Optional custom name
             
         Returns:
-            Report database record with file path
+            Created Report with Summary section
         """
-        # Create report record
-        report_title = title or cls._generate_title(report_type, period_start, period_end)
+        # Get person for naming
+        person = None
+        if person_id:
+            person = db.query(Person).filter(Person.id == person_id).first()
         
+        # Auto-generate name if not provided
+        if not name:
+            name = cls._generate_report_name(db, user_id, person_id, person)
+        
+        # Create report
         report = Report(
             user_id=user_id,
-            person_id=int(person_id) if person_id else None,
-            report_type=report_type.value,
-            report_format=report_format.value,
-            title=report_title,
-            status=ReportStatus.GENERATING.value,
-            period_start=period_start,
-            period_end=period_end,
+            person_id=person_id,
+            name=name,
         )
         db.add(report)
+        db.flush()  # Get the ID
+        
+        # Create default Summary section with default filters
+        default_filters = cls._get_default_filters()
+        summary_section = ReportSection(
+            report_id=report.id,
+            section_type=SectionType.SUMMARY.value,
+            position=0,
+            filters_json=default_filters,
+        )
+        db.add(summary_section)
         db.commit()
         db.refresh(report)
         
-        try:
-            # Gather report data
-            report_data = cls._gather_report_data(
-                db, user_id, period_start, period_end, report_title, person_id
-            )
-            
-            # Generate file based on format
-            if report_format == ReportFormat.PDF:
-                file_path, file_size = cls._generate_pdf(report_data, str(report.id))
-            elif report_format == ReportFormat.EXCEL:
-                file_path, file_size = cls._generate_excel(report_data, str(report.id))
-            else:  # JSON
-                file_path, file_size = cls._generate_json(report_data, str(report.id))
-            
-            # Update report record
-            report.status = ReportStatus.COMPLETED.value
-            report.file_path = file_path
-            report.file_size = file_size
-            report.completed_at = datetime.utcnow()
-            report.metadata_json = report_data.to_dict()
-            db.commit()
-            
-        except Exception as e:
-            report.status = ReportStatus.FAILED.value
-            report.error_message = str(e)
-            db.commit()
-            raise
-        
         return report
-    
+
     @classmethod
-    def _generate_title(cls, report_type: ReportType, start: date, end: date) -> str:
-        """Generate report title based on type and period."""
-        if report_type == ReportType.MONTHLY_SUMMARY:
-            return f"Monthly Financial Report - {start.strftime('%B %Y')}"
-        elif report_type == ReportType.QUARTERLY_SUMMARY:
-            quarter = (start.month - 1) // 3 + 1
-            return f"Q{quarter} {start.year} Financial Report"
-        elif report_type == ReportType.ANNUAL_SUMMARY:
-            return f"Annual Financial Report - {start.year}"
-        elif report_type == ReportType.CATEGORY_BREAKDOWN:
-            return f"Category Analysis - {start.strftime('%b %d')} to {end.strftime('%b %d, %Y')}"
-        else:
-            return f"Financial Report - {start.strftime('%b %d')} to {end.strftime('%b %d, %Y')}"
-    
-    @classmethod
-    def _gather_report_data(
+    def _generate_report_name(
         cls,
         db: Session,
         user_id: str,
-        period_start: date,
-        period_end: date,
-        title: str,
-        person_id: Optional[str] = None,
-    ) -> ReportData:
-        """Gather all data needed for report generation."""
-        # Fetch transactions
-        query = db.query(Transaction).filter(
-            Transaction.user_id == user_id,
-            Transaction.date >= period_start,
-            Transaction.date <= period_end,
-        )
+        person_id: Optional[int],
+        person: Optional[Person],
+    ) -> str:
+        """Generate auto-name for report: "{Person Name} Report" or "{Person Name} Report 2", etc."""
+        person_name = person.name if person else "My"
+        base_name = f"{person_name} Report"
+        
+        # Count existing reports for this person
+        query = db.query(func.count(Report.id)).filter(Report.user_id == user_id)
         if person_id:
-            query = query.filter(Transaction.person_id == int(person_id))
+            query = query.filter(Report.person_id == person_id)
+        else:
+            query = query.filter(Report.person_id.is_(None))
         
-        transactions = query.order_by(Transaction.date).all()
+        count = query.scalar() or 0
         
-        # Calculate totals
-        total_income = sum(
-            float(t.amount_signed) for t in transactions 
-            if t.amount_signed and t.amount_signed > 0
-        )
-        total_expenses = sum(
-            abs(float(t.amount_signed)) for t in transactions 
-            if t.amount_signed and t.amount_signed < 0
-        )
-        
-        # Category breakdown
-        category_data = cls._calculate_category_breakdown(transactions, total_expenses)
-        
-        # Monthly trends
-        monthly_trends = cls._calculate_monthly_trends(transactions)
-        
-        # Weekly trends  
-        weekly_trends = cls._calculate_weekly_trends(transactions)
-        
-        # Get accounts
-        accounts = list(set(t.account for t in transactions if t.account))
-        
-        # Get insights
-        insights_report = InsightsService.generate_insights(
-            db, user_id, 
-            period_days=(period_end - period_start).days,
-            person_id=person_id
-        )
-        insights = [i.to_dict() for i in insights_report.insights[:10]]
-        
-        # Get recurring patterns
-        recurring_result = RecurringDetectionService.detect_patterns(
-            db, user_id, period_start, period_end, person_id
-        )
-        recurring = [g.to_dict() for g in recurring_result.recurring_groups[:10]]
-        
-        return ReportData(
-            title=title,
-            subtitle=f"{period_start.strftime('%B %d, %Y')} - {period_end.strftime('%B %d, %Y')}",
-            period_start=period_start,
-            period_end=period_end,
-            generated_at=datetime.utcnow(),
-            total_income=total_income,
-            total_expenses=total_expenses,
-            net_change=total_income - total_expenses,
-            transaction_count=len(transactions),
-            categories=category_data,
-            monthly_trends=monthly_trends,
-            weekly_trends=weekly_trends,
-            insights=insights,
-            recurring=recurring,
-            account_names=accounts,
-        )
-    
+        if count == 0:
+            return base_name
+        else:
+            return f"{base_name} {count + 1}"
+
     @classmethod
-    def _calculate_category_breakdown(
+    def _get_default_filters(cls) -> Dict[str, Any]:
+        """Get default filters (current month)."""
+        today = date.today()
+        first_day = date(today.year, today.month, 1)
+        
+        # Last day of current month
+        if today.month == 12:
+            last_day = date(today.year, 12, 31)
+        else:
+            last_day = date(today.year, today.month + 1, 1).replace(day=1)
+            last_day = last_day.replace(day=1) - __import__('datetime').timedelta(days=1)
+        
+        return {
+            "start_date": first_day.isoformat(),
+            "end_date": last_day.isoformat(),
+            "group_by": "month",
+        }
+
+    @classmethod
+    def get_report(
         cls,
-        transactions: List[Transaction],
-        total_expenses: float,
-    ) -> List[CategorySummary]:
-        """Calculate category-wise spending breakdown."""
-        category_txns = defaultdict(list)
-        
-        for txn in transactions:
-            if txn.amount_signed and txn.amount_signed < 0:
-                category = txn.category or "Other"
-                category_txns[category].append(txn)
-        
-        summaries = []
-        for category, txns in category_txns.items():
-            total = sum(abs(float(t.amount_signed)) for t in txns)
-            
-            # Top merchants
-            merchant_totals = defaultdict(float)
-            for t in txns:
-                merchant = t.merchant or t.description or "Unknown"
-                merchant_totals[merchant] += abs(float(t.amount_signed))
-            
-            top_merchants = [
-                {"name": m, "total": round(t, 2)}
-                for m, t in sorted(merchant_totals.items(), key=lambda x: x[1], reverse=True)[:5]
-            ]
-            
-            summaries.append(CategorySummary(
-                name=category,
-                total=total,
-                transaction_count=len(txns),
-                percentage=(total / total_expenses * 100) if total_expenses > 0 else 0,
-                average_transaction=total / len(txns) if txns else 0,
-                top_merchants=top_merchants,
-            ))
-        
-        # Sort by total descending
-        summaries.sort(key=lambda x: x.total, reverse=True)
-        return summaries
-    
-    @classmethod
-    def _calculate_monthly_trends(cls, transactions: List[Transaction]) -> List[PeriodSummary]:
-        """Calculate monthly spending trends."""
-        monthly_data = defaultdict(lambda: {"total": 0, "count": 0, "start": None, "end": None})
-        
-        for txn in transactions:
-            if txn.amount_signed and txn.amount_signed < 0:
-                key = txn.date.strftime("%Y-%m")
-                monthly_data[key]["total"] += abs(float(txn.amount_signed))
-                monthly_data[key]["count"] += 1
-                
-                if not monthly_data[key]["start"] or txn.date < monthly_data[key]["start"]:
-                    monthly_data[key]["start"] = txn.date
-                if not monthly_data[key]["end"] or txn.date > monthly_data[key]["end"]:
-                    monthly_data[key]["end"] = txn.date
-        
-        trends = []
-        for key in sorted(monthly_data.keys()):
-            data = monthly_data[key]
-            trends.append(PeriodSummary(
-                label=datetime.strptime(key, "%Y-%m").strftime("%b %Y"),
-                total=data["total"],
-                transaction_count=data["count"],
-                start_date=data["start"],
-                end_date=data["end"],
-            ))
-        
-        return trends
-    
-    @classmethod
-    def _calculate_weekly_trends(cls, transactions: List[Transaction]) -> List[PeriodSummary]:
-        """Calculate weekly spending trends."""
-        weekly_data = defaultdict(lambda: {"total": 0, "count": 0, "start": None, "end": None})
-        
-        for txn in transactions:
-            if txn.amount_signed and txn.amount_signed < 0:
-                # Get week start (Monday)
-                week_start = txn.date - timedelta(days=txn.date.weekday())
-                key = week_start.isoformat()
-                
-                weekly_data[key]["total"] += abs(float(txn.amount_signed))
-                weekly_data[key]["count"] += 1
-                
-                if not weekly_data[key]["start"] or txn.date < weekly_data[key]["start"]:
-                    weekly_data[key]["start"] = txn.date
-                if not weekly_data[key]["end"] or txn.date > weekly_data[key]["end"]:
-                    weekly_data[key]["end"] = txn.date
-        
-        trends = []
-        for key in sorted(weekly_data.keys()):
-            data = weekly_data[key]
-            week_start = date.fromisoformat(key)
-            trends.append(PeriodSummary(
-                label=f"Week of {week_start.strftime('%b %d')}",
-                total=data["total"],
-                transaction_count=data["count"],
-                start_date=data["start"] or week_start,
-                end_date=data["end"] or week_start,
-            ))
-        
-        return trends[-12:]  # Last 12 weeks
-    
-    @classmethod
-    def _generate_pdf(cls, data: ReportData, report_id: str) -> Tuple[str, int]:
-        """Generate PDF report using reportlab."""
-        try:
-            from reportlab.lib import colors
-            from reportlab.lib.pagesizes import letter, A4
-            from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-            from reportlab.lib.units import inch
-            from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
-        except ImportError:
-            # Fallback: generate a simple text-based PDF structure
-            return cls._generate_simple_pdf(data, report_id)
-        
-        # Ensure output directory exists
-        REPORTS_DIR.mkdir(parents=True, exist_ok=True)
-        file_path = REPORTS_DIR / f"{report_id}.pdf"
-        
-        doc = SimpleDocTemplate(str(file_path), pagesize=A4)
-        story = []
-        styles = getSampleStyleSheet()
-        
-        # Title
-        title_style = ParagraphStyle(
-            'CustomTitle',
-            parent=styles['Heading1'],
-            fontSize=24,
-            spaceAfter=30,
-        )
-        story.append(Paragraph(data.title, title_style))
-        story.append(Paragraph(data.subtitle, styles['Normal']))
-        story.append(Spacer(1, 0.5*inch))
-        
-        # Summary
-        story.append(Paragraph("Summary", styles['Heading2']))
-        summary_data = [
-            ["Total Income", f"AED {data.total_income:,.2f}"],
-            ["Total Expenses", f"AED {data.total_expenses:,.2f}"],
-            ["Net Change", f"AED {data.net_change:,.2f}"],
-            ["Transactions", str(data.transaction_count)],
-        ]
-        summary_table = Table(summary_data, colWidths=[2.5*inch, 2.5*inch])
-        summary_table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, -1), colors.whitesmoke),
-            ('TEXTCOLOR', (0, 0), (-1, -1), colors.black),
-            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-            ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
-            ('FONTSIZE', (0, 0), (-1, -1), 12),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 12),
-            ('TOPPADDING', (0, 0), (-1, -1), 12),
-            ('GRID', (0, 0), (-1, -1), 1, colors.grey),
-        ]))
-        story.append(summary_table)
-        story.append(Spacer(1, 0.3*inch))
-        
-        # Category Breakdown
-        story.append(Paragraph("Spending by Category", styles['Heading2']))
-        cat_data = [["Category", "Amount", "% of Total", "Transactions"]]
-        for cat in data.categories[:10]:
-            cat_data.append([
-                cat.name,
-                f"AED {cat.total:,.2f}",
-                f"{cat.percentage:.1f}%",
-                str(cat.transaction_count),
-            ])
-        
-        cat_table = Table(cat_data, colWidths=[2*inch, 1.5*inch, 1*inch, 1*inch])
-        cat_table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, -1), 10),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
-            ('TOPPADDING', (0, 0), (-1, -1), 8),
-            ('GRID', (0, 0), (-1, -1), 1, colors.black),
-        ]))
-        story.append(cat_table)
-        story.append(Spacer(1, 0.3*inch))
-        
-        # Monthly Trends
-        if data.monthly_trends:
-            story.append(Paragraph("Monthly Trends", styles['Heading2']))
-            trend_data = [["Month", "Amount", "Transactions"]]
-            for trend in data.monthly_trends:
-                trend_data.append([
-                    trend.label,
-                    f"AED {trend.total:,.2f}",
-                    str(trend.transaction_count),
-                ])
-            
-            trend_table = Table(trend_data, colWidths=[2*inch, 2*inch, 1.5*inch])
-            trend_table.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-                ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                ('FONTSIZE', (0, 0), (-1, -1), 10),
-                ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
-                ('TOPPADDING', (0, 0), (-1, -1), 8),
-                ('GRID', (0, 0), (-1, -1), 1, colors.black),
-            ]))
-            story.append(trend_table)
-        
-        # Build PDF
-        doc.build(story)
-        
-        file_size = file_path.stat().st_size
-        return str(file_path), file_size
-    
-    @classmethod
-    def _generate_simple_pdf(cls, data: ReportData, report_id: str) -> Tuple[str, int]:
-        """Generate a simple PDF without reportlab (fallback)."""
-        REPORTS_DIR.mkdir(parents=True, exist_ok=True)
-        file_path = REPORTS_DIR / f"{report_id}.txt"  # Text file as fallback
-        
-        content = f"""
-{data.title}
-{data.subtitle}
-Generated: {data.generated_at.strftime('%Y-%m-%d %H:%M')}
-
-═══════════════════════════════════════════════════════════════
-
-SUMMARY
--------
-Total Income:     AED {data.total_income:,.2f}
-Total Expenses:   AED {data.total_expenses:,.2f}
-Net Change:       AED {data.net_change:,.2f}
-Transactions:     {data.transaction_count}
-
-═══════════════════════════════════════════════════════════════
-
-SPENDING BY CATEGORY
---------------------
-"""
-        for cat in data.categories[:10]:
-            content += f"{cat.name:20s} AED {cat.total:>10,.2f} ({cat.percentage:>5.1f}%)\n"
-        
-        content += """
-═══════════════════════════════════════════════════════════════
-
-MONTHLY TRENDS
---------------
-"""
-        for trend in data.monthly_trends:
-            content += f"{trend.label:15s} AED {trend.total:>10,.2f} ({trend.transaction_count} txns)\n"
-        
-        with open(file_path, 'w') as f:
-            f.write(content)
-        
-        file_size = file_path.stat().st_size
-        return str(file_path), file_size
-    
-    @classmethod
-    def _generate_excel(cls, data: ReportData, report_id: str) -> Tuple[str, int]:
-        """Generate Excel report using openpyxl."""
-        try:
-            from openpyxl import Workbook
-            from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
-            from openpyxl.utils import get_column_letter
-        except ImportError:
-            # Fallback to CSV
-            return cls._generate_csv(data, report_id)
-        
-        REPORTS_DIR.mkdir(parents=True, exist_ok=True)
-        file_path = REPORTS_DIR / f"{report_id}.xlsx"
-        
-        wb = Workbook()
-        
-        # Summary sheet
-        ws = wb.active
-        ws.title = "Summary"
-        
-        # Styles
-        header_font = Font(bold=True, size=14)
-        header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
-        header_font_white = Font(bold=True, color="FFFFFF")
-        
-        # Title
-        ws['A1'] = data.title
-        ws['A1'].font = Font(bold=True, size=18)
-        ws['A2'] = data.subtitle
-        ws['A3'] = f"Generated: {data.generated_at.strftime('%Y-%m-%d %H:%M')}"
-        
-        # Summary
-        ws['A5'] = "Summary"
-        ws['A5'].font = header_font
-        
-        summary_data = [
-            ("Total Income", f"AED {data.total_income:,.2f}"),
-            ("Total Expenses", f"AED {data.total_expenses:,.2f}"),
-            ("Net Change", f"AED {data.net_change:,.2f}"),
-            ("Transactions", data.transaction_count),
-        ]
-        for i, (label, value) in enumerate(summary_data, 6):
-            ws[f'A{i}'] = label
-            ws[f'B{i}'] = value
-        
-        # Categories sheet
-        ws_cat = wb.create_sheet("Categories")
-        ws_cat['A1'] = "Category"
-        ws_cat['B1'] = "Amount"
-        ws_cat['C1'] = "% of Total"
-        ws_cat['D1'] = "Transactions"
-        ws_cat['E1'] = "Avg Transaction"
-        
-        for cell in ws_cat[1]:
-            cell.font = header_font_white
-            cell.fill = header_fill
-        
-        for i, cat in enumerate(data.categories, 2):
-            ws_cat[f'A{i}'] = cat.name
-            ws_cat[f'B{i}'] = cat.total
-            ws_cat[f'C{i}'] = cat.percentage / 100
-            ws_cat[f'D{i}'] = cat.transaction_count
-            ws_cat[f'E{i}'] = cat.average_transaction
-        
-        # Format columns
-        ws_cat.column_dimensions['A'].width = 20
-        ws_cat.column_dimensions['B'].width = 15
-        ws_cat.column_dimensions['C'].width = 12
-        ws_cat.column_dimensions['D'].width = 12
-        ws_cat.column_dimensions['E'].width = 15
-        
-        # Monthly trends sheet
-        ws_monthly = wb.create_sheet("Monthly Trends")
-        ws_monthly['A1'] = "Month"
-        ws_monthly['B1'] = "Amount"
-        ws_monthly['C1'] = "Transactions"
-        
-        for cell in ws_monthly[1]:
-            cell.font = header_font_white
-            cell.fill = header_fill
-        
-        for i, trend in enumerate(data.monthly_trends, 2):
-            ws_monthly[f'A{i}'] = trend.label
-            ws_monthly[f'B{i}'] = trend.total
-            ws_monthly[f'C{i}'] = trend.transaction_count
-        
-        # Save
-        wb.save(file_path)
-        file_size = file_path.stat().st_size
-        return str(file_path), file_size
-    
-    @classmethod
-    def _generate_csv(cls, data: ReportData, report_id: str) -> Tuple[str, int]:
-        """Generate CSV report (fallback for Excel)."""
-        import csv
-        
-        REPORTS_DIR.mkdir(parents=True, exist_ok=True)
-        file_path = REPORTS_DIR / f"{report_id}.csv"
-        
-        with open(file_path, 'w', newline='') as f:
-            writer = csv.writer(f)
-            
-            # Summary
-            writer.writerow(["Summary"])
-            writer.writerow(["Total Income", data.total_income])
-            writer.writerow(["Total Expenses", data.total_expenses])
-            writer.writerow(["Net Change", data.net_change])
-            writer.writerow(["Transactions", data.transaction_count])
-            writer.writerow([])
-            
-            # Categories
-            writer.writerow(["Categories"])
-            writer.writerow(["Category", "Amount", "Percentage", "Transactions"])
-            for cat in data.categories:
-                writer.writerow([cat.name, cat.total, cat.percentage, cat.transaction_count])
-            writer.writerow([])
-            
-            # Monthly trends
-            writer.writerow(["Monthly Trends"])
-            writer.writerow(["Month", "Amount", "Transactions"])
-            for trend in data.monthly_trends:
-                writer.writerow([trend.label, trend.total, trend.transaction_count])
-        
-        file_size = file_path.stat().st_size
-        return str(file_path), file_size
-    
-    @classmethod
-    def _generate_json(cls, data: ReportData, report_id: str) -> Tuple[str, int]:
-        """Generate JSON report."""
-        import json
-        
-        REPORTS_DIR.mkdir(parents=True, exist_ok=True)
-        file_path = REPORTS_DIR / f"{report_id}.json"
-        
-        with open(file_path, 'w') as f:
-            json.dump(data.to_dict(), f, indent=2)
-        
-        file_size = file_path.stat().st_size
-        return str(file_path), file_size
-    
-    @classmethod
-    def get_report(cls, db: Session, report_id: str, user_id: str) -> Optional[Report]:
-        """Get a report by ID."""
-        return db.query(Report).filter(
+        db: Session,
+        report_id: str,
+        user_id: str,
+    ) -> Optional[Report]:
+        """Get a report by ID with all sections."""
+        return db.query(Report).options(
+            joinedload(Report.sections),
+            joinedload(Report.person),
+        ).filter(
             Report.id == uuid.UUID(report_id),
-            Report.user_id == user_id
+            Report.user_id == user_id,
         ).first()
-    
+
     @classmethod
-    def get_user_reports(
+    def list_reports(
         cls,
         db: Session,
         user_id: str,
-        limit: int = 20,
-        include_failed: bool = False,
+        person_id: Optional[int] = None,
+        limit: int = 50,
     ) -> List[Report]:
-        """Get reports for a user."""
-        query = db.query(Report).filter(Report.user_id == user_id)
+        """
+        List all reports for user (optionally filtered by person).
+        Shows reports from ALL persons by default.
+        """
+        query = db.query(Report).options(
+            joinedload(Report.person),
+        ).filter(Report.user_id == user_id)
         
-        if not include_failed:
-            query = query.filter(Report.status != ReportStatus.FAILED.value)
+        if person_id is not None:
+            query = query.filter(Report.person_id == person_id)
         
-        return query.order_by(Report.created_at.desc()).limit(limit).all()
-    
+        return query.order_by(Report.updated_at.desc()).limit(limit).all()
+
     @classmethod
-    def delete_report(cls, db: Session, report_id: str, user_id: str) -> bool:
-        """Delete a report and its file."""
+    def update_report(
+        cls,
+        db: Session,
+        report_id: str,
+        user_id: str,
+        name: str,
+    ) -> Optional[Report]:
+        """Update report name."""
         report = cls.get_report(db, report_id, user_id)
         if not report:
-            return False
+            return None
         
-        # Delete file if exists
-        if report.file_path and Path(report.file_path).exists():
-            Path(report.file_path).unlink()
+        report.name = name
+        report.updated_at = datetime.utcnow()
+        db.commit()
+        db.refresh(report)
+        return report
+
+    @classmethod
+    def delete_report(
+        cls,
+        db: Session,
+        report_id: str,
+        user_id: str,
+    ) -> bool:
+        """Delete a report and all its sections."""
+        report = db.query(Report).filter(
+            Report.id == uuid.UUID(report_id),
+            Report.user_id == user_id,
+        ).first()
+        
+        if not report:
+            return False
         
         db.delete(report)
         db.commit()
         return True
 
+    @classmethod
+    def duplicate_report(
+        cls,
+        db: Session,
+        report_id: str,
+        user_id: str,
+    ) -> Optional[Report]:
+        """Duplicate a report with all its sections."""
+        original = cls.get_report(db, report_id, user_id)
+        if not original:
+            return None
+        
+        # Create new report
+        new_report = Report(
+            user_id=user_id,
+            person_id=original.person_id,
+            name=f"{original.name} (Copy)",
+        )
+        db.add(new_report)
+        db.flush()
+        
+        # Copy all sections
+        for section in original.sections:
+            new_section = ReportSection(
+                report_id=new_report.id,
+                section_type=section.section_type,
+                position=section.position,
+                custom_title=section.custom_title,
+                filters_json=section.filters_json,
+                content_json=section.content_json,
+            )
+            db.add(new_section)
+        
+        db.commit()
+        db.refresh(new_report)
+        return new_report
+
+    # Section management
+
+    @classmethod
+    def add_section(
+        cls,
+        db: Session,
+        report_id: str,
+        user_id: str,
+        section_type: SectionType,
+        custom_title: Optional[str] = None,
+        filters: Optional[SectionFilters] = None,
+    ) -> Optional[ReportSection]:
+        """Add a new section to a report."""
+        report = db.query(Report).filter(
+            Report.id == uuid.UUID(report_id),
+            Report.user_id == user_id,
+        ).first()
+        
+        if not report:
+            return None
+        
+        # Get max position (handle 0 being falsy)
+        max_pos_result = db.query(func.max(ReportSection.position)).filter(
+            ReportSection.report_id == report.id
+        ).scalar()
+        max_pos = max_pos_result if max_pos_result is not None else -1
+        
+        # Get default filters from Summary section if available
+        filters_json = None
+        if filters:
+            filters_json = filters.model_dump(exclude_none=True)
+        else:
+            # Inherit filters from Summary section
+            summary = db.query(ReportSection).filter(
+                ReportSection.report_id == report.id,
+                ReportSection.section_type == SectionType.SUMMARY.value,
+            ).first()
+            if summary and summary.filters_json:
+                filters_json = summary.filters_json.copy()
+        
+        section = ReportSection(
+            report_id=report.id,
+            section_type=section_type.value,
+            position=max_pos + 1,
+            custom_title=custom_title,
+            filters_json=filters_json,
+        )
+        db.add(section)
+        
+        # Update report timestamp
+        report.updated_at = datetime.utcnow()
+        
+        db.commit()
+        db.refresh(section)
+        return section
+
+    @classmethod
+    def update_section(
+        cls,
+        db: Session,
+        report_id: str,
+        section_id: int,
+        user_id: str,
+        custom_title: Optional[str] = None,
+        filters: Optional[SectionFilters] = None,
+        content: Optional[SectionContent] = None,
+    ) -> Optional[ReportSection]:
+        """Update a section's title, filters, or content."""
+        # Verify report ownership
+        report = db.query(Report).filter(
+            Report.id == uuid.UUID(report_id),
+            Report.user_id == user_id,
+        ).first()
+        
+        if not report:
+            return None
+        
+        section = db.query(ReportSection).filter(
+            ReportSection.id == section_id,
+            ReportSection.report_id == report.id,
+        ).first()
+        
+        if not section:
+            return None
+        
+        if custom_title is not None:
+            section.custom_title = custom_title if custom_title else None
+        
+        if filters is not None:
+            section.filters_json = filters.model_dump(exclude_none=True)
+        
+        if content is not None:
+            section.content_json = content.model_dump(exclude_none=True)
+        
+        section.updated_at = datetime.utcnow()
+        report.updated_at = datetime.utcnow()
+        
+        db.commit()
+        db.refresh(section)
+        return section
+
+    @classmethod
+    def delete_section(
+        cls,
+        db: Session,
+        report_id: str,
+        section_id: int,
+        user_id: str,
+    ) -> bool:
+        """Delete a section (except Summary)."""
+        # Verify report ownership
+        report = db.query(Report).filter(
+            Report.id == uuid.UUID(report_id),
+            Report.user_id == user_id,
+        ).first()
+        
+        if not report:
+            return False
+        
+        section = db.query(ReportSection).filter(
+            ReportSection.id == section_id,
+            ReportSection.report_id == report.id,
+        ).first()
+        
+        if not section:
+            return False
+        
+        # Cannot delete Summary section
+        if section.section_type == SectionType.SUMMARY.value:
+            return False
+        
+        db.delete(section)
+        
+        # Re-order remaining sections
+        remaining = db.query(ReportSection).filter(
+            ReportSection.report_id == report.id,
+        ).order_by(ReportSection.position).all()
+        
+        for i, s in enumerate(remaining):
+            s.position = i
+        
+        report.updated_at = datetime.utcnow()
+        db.commit()
+        return True
+
+    @classmethod
+    def move_section(
+        cls,
+        db: Session,
+        report_id: str,
+        section_id: int,
+        user_id: str,
+        direction: MoveDirection,
+    ) -> bool:
+        """Move a section up or down."""
+        # Verify report ownership
+        report = db.query(Report).filter(
+            Report.id == uuid.UUID(report_id),
+            Report.user_id == user_id,
+        ).first()
+        
+        if not report:
+            return False
+        
+        section = db.query(ReportSection).filter(
+            ReportSection.id == section_id,
+            ReportSection.report_id == report.id,
+        ).first()
+        
+        if not section:
+            return False
+        
+        # Cannot move Summary section
+        if section.section_type == SectionType.SUMMARY.value:
+            return False
+        
+        # Get all sections ordered by position
+        sections = db.query(ReportSection).filter(
+            ReportSection.report_id == report.id,
+        ).order_by(ReportSection.position).all()
+        
+        current_idx = next((i for i, s in enumerate(sections) if s.id == section_id), None)
+        if current_idx is None:
+            return False
+        
+        if direction == MoveDirection.UP:
+            # Can't move above Summary (position 0)
+            if current_idx <= 1:
+                return False
+            swap_idx = current_idx - 1
+        else:  # DOWN
+            if current_idx >= len(sections) - 1:
+                return False
+            swap_idx = current_idx + 1
+        
+        # Swap positions
+        sections[current_idx].position, sections[swap_idx].position = \
+            sections[swap_idx].position, sections[current_idx].position
+        
+        report.updated_at = datetime.utcnow()
+        db.commit()
+        return True
+
+    @classmethod
+    def generate_section_title(
+        cls,
+        section: ReportSection,
+    ) -> str:
+        """Generate display title for a section."""
+        # Custom title takes precedence
+        if section.custom_title:
+            return section.custom_title
+        
+        base_name = cls.SECTION_TYPE_NAMES.get(
+            section.section_type,
+            section.section_type.replace("_", " ").title()
+        )
+        
+        # Build date range string
+        filters = section.filters_json or {}
+        start_date = filters.get("start_date")
+        end_date = filters.get("end_date")
+        
+        date_range = ""
+        if start_date and end_date:
+            try:
+                start = datetime.fromisoformat(start_date)
+                end = datetime.fromisoformat(end_date)
+                date_range = f"{start.strftime('%b %d, %Y')} – {end.strftime('%b %d, %Y')}"
+            except (ValueError, TypeError):
+                pass
+        
+        # Add grouping prefix for expense_overview
+        if section.section_type == SectionType.EXPENSE_OVERVIEW.value:
+            group_by = filters.get("group_by", "month")
+            grouping = "Monthly" if group_by == "month" else "Weekly"
+            if date_range:
+                return f"{grouping} {base_name} for {date_range}"
+            return f"{grouping} {base_name}"
+        
+        if date_range:
+            return f"{base_name} for {date_range}"
+        return base_name
+
+    @classmethod
+    def to_response(cls, report: Report) -> Dict[str, Any]:
+        """Convert Report to response dict."""
+        return {
+            "id": str(report.id),
+            "name": report.name,
+            "person_id": report.person_id,
+            "person_name": report.person.name if report.person else None,
+            "sections": [cls.section_to_response(s) for s in report.sections],
+            "created_at": report.created_at.isoformat() if report.created_at else None,
+            "updated_at": report.updated_at.isoformat() if report.updated_at else None,
+        }
+
+    @classmethod
+    def section_to_response(cls, section: ReportSection) -> Dict[str, Any]:
+        """Convert ReportSection to response dict."""
+        return {
+            "id": section.id,
+            "section_type": section.section_type,
+            "position": section.position,
+            "custom_title": section.custom_title,
+            "display_title": cls.generate_section_title(section),
+            "filters": section.filters_json,
+            "content": section.content_json,
+            "created_at": section.created_at.isoformat() if section.created_at else None,
+            "updated_at": section.updated_at.isoformat() if section.updated_at else None,
+        }
+
+    @classmethod
+    def to_list_item(cls, report: Report) -> Dict[str, Any]:
+        """Convert Report to list item dict."""
+        return {
+            "id": str(report.id),
+            "name": report.name,
+            "person_id": report.person_id,
+            "person_name": report.person.name if report.person else None,
+            "section_count": len(report.sections) if report.sections else 0,
+            "created_at": report.created_at.isoformat() if report.created_at else None,
+            "updated_at": report.updated_at.isoformat() if report.updated_at else None,
+        }

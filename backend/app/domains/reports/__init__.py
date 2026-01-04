@@ -1,25 +1,16 @@
-"""Reports domain for generating PDF/Excel financial reports."""
+"""Reports domain for customizable PDF reports."""
 from .router import router
 from .service import ReportService
 from .models import (
     Report,
-    ReportFormat,
-    ReportType,
-    ReportStatus,
-    ReportData,
-    CategorySummary,
-    PeriodSummary,
+    ReportSection,
+    SectionType,
 )
 
 __all__ = [
     'router',
     'ReportService',
     'Report',
-    'ReportFormat',
-    'ReportType',
-    'ReportStatus',
-    'ReportData',
-    'CategorySummary',
-    'PeriodSummary',
+    'ReportSection',
+    'SectionType',
 ]
-

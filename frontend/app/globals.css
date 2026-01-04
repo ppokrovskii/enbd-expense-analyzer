@@ -486,3 +486,71 @@
 .recharts-rectangle.recharts-tooltip-cursor {
   fill: rgba(255, 255, 255, 0.05) !important;
 }
+
+/* ============================
+   Print Styles for PDF Export
+   ============================ */
+@media print {
+  /* Hide interactive elements */
+  .no-print {
+    display: none !important;
+  }
+  
+  /* Show print-only elements */
+  .print-only {
+    display: block !important;
+  }
+  
+  /* Reset background colors for printing */
+  body {
+    background: white !important;
+    color: black !important;
+  }
+  
+  .card {
+    box-shadow: none !important;
+    border: 1px solid #e5e5e5 !important;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  
+  /* Ensure charts print properly */
+  .recharts-wrapper {
+    page-break-inside: avoid;
+  }
+  
+  /* Page breaks for report sections */
+  .report-section {
+    page-break-inside: avoid;
+  }
+  
+  /* Remove hover effects */
+  a, button {
+    color: inherit !important;
+  }
+  
+  /* Ensure text is readable */
+  * {
+    color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  
+  /* Hide navigation */
+  nav, header, aside {
+    display: none !important;
+  }
+  
+  /* Full width content */
+  main {
+    width: 100% !important;
+    max-width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+  
+  /* Page margins */
+  @page {
+    margin: 1cm;
+  }
+}
