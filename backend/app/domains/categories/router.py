@@ -613,6 +613,278 @@ def ai_bulk_apply(
 # LLM Rule Generation Endpoints
 # ============================================================================
 
+# ============================================================================
+# Rule Test/Preview Endpoints
+# ============================================================================
+
+class RuleTestRequest(BaseModel):
+    """Request model for testing a rule pattern."""
+    keywords: List[str]
+    exclude_keywords: Optional[List[str]] = []
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
+    limit: int = 50
+
+
+class MatchingMerchant(BaseModel):
+    """A merchant that matches the rule pattern."""
+    merchant: str
+    transaction_count: int
+    total_amount: float
+    matched_keyword: str
+
+
+class SampleTransaction(BaseModel):
+    """A sample transaction that matches the rule."""
+    id: int
+    date: date
+    merchant: str
+    description: str
+    amount: float
+    matched_text: str
+
+
+class RuleTestResponse(BaseModel):
+    """Response model for rule test endpoint."""
+    matching_merchants: List[MatchingMerchant]
+    match_count: int
+    total_transactions: int
+    sample_transactions: List[SampleTransaction]
+
+
+@router.post("/rules/test", response_model=RuleTestResponse)
+def test_rule_pattern(
+    request: RuleTestRequest,
+    ctx: FilteredQueryContext = Depends(get_filtered_context)
+):
+    """
+    Test a rule pattern and preview which merchants it would match.
+    
+    This endpoint allows you to test keywords and exclude_keywords
+    before creating or updating a rule.
+    """
+    if not request.keywords:
+        return RuleTestResponse(
+            matching_merchants=[],
+            match_count=0,
+            total_transactions=0,
+            sample_transactions=[]
+        )
+    
+    # Build date filter
+    date_filters = []
+    if request.start_date and request.end_date:
+        date_filters.append(Transaction.date >= request.start_date)
+        date_filters.append(Transaction.date <= request.end_date)
+    else:
+        # Default to last 90 days
+        cutoff = datetime.now().date() - timedelta(days=90)
+        date_filters.append(Transaction.date >= cutoff)
+    
+    # Get all transactions for the user/person
+    base_query = ctx.query(Transaction).filter(*date_filters)
+    all_transactions = base_query.all()
+    
+    # Apply pattern matching logic
+    matching_txns = []
+    for txn in all_transactions:
+        search_text = (txn.search_text or txn.merchant or "").upper()
+        if not search_text:
+            continue
+        
+        # Check exclusions first
+        excluded = False
+        for exclude in (request.exclude_keywords or []):
+            if exclude and exclude.upper() in search_text:
+                excluded = True
+                break
+        
+        if excluded:
+            continue
+        
+        # Check keyword matches
+        matched_kw = None
+        for keyword in request.keywords:
+            if '|' in keyword:
+                # Pipe-separated alternatives (OR pattern)
+                alternatives = [alt.strip().upper() for alt in keyword.split('|')]
+                for alt in alternatives:
+                    if alt and alt in search_text:
+                        matched_kw = alt
+                        break
+            else:
+                if keyword.upper() in search_text:
+                    matched_kw = keyword
+                    break
+            if matched_kw:
+                break
+        
+        if matched_kw:
+            matching_txns.append((txn, matched_kw))
+    
+    # Group by merchant
+    merchant_groups = {}
+    for txn, matched_kw in matching_txns:
+        merchant = txn.merchant or "Unknown"
+        if merchant not in merchant_groups:
+            merchant_groups[merchant] = {
+                'count': 0,
+                'total': 0.0,
+                'matched_keyword': matched_kw,
+                'transactions': []
+            }
+        merchant_groups[merchant]['count'] += 1
+        merchant_groups[merchant]['total'] += abs(float(txn.amount_signed or 0))
+        merchant_groups[merchant]['transactions'].append((txn, matched_kw))
+    
+    # Build matching merchants list
+    matching_merchants = [
+        MatchingMerchant(
+            merchant=merchant,
+            transaction_count=data['count'],
+            total_amount=data['total'],
+            matched_keyword=data['matched_keyword']
+        )
+        for merchant, data in sorted(
+            merchant_groups.items(), 
+            key=lambda x: x[1]['total'], 
+            reverse=True
+        )[:request.limit]
+    ]
+    
+    # Build sample transactions (first 10)
+    sample_transactions = []
+    for txn, matched_kw in matching_txns[:10]:
+        sample_transactions.append(SampleTransaction(
+            id=txn.id,
+            date=txn.date,
+            merchant=txn.merchant or "Unknown",
+            description=txn.description or "",
+            amount=float(txn.amount_signed or 0),
+            matched_text=matched_kw
+        ))
+    
+    return RuleTestResponse(
+        matching_merchants=matching_merchants,
+        match_count=len(merchant_groups),
+        total_transactions=len(matching_txns),
+        sample_transactions=sample_transactions
+    )
+
+
+# ============================================================================
+# Rule Conflict Detection Endpoints
+# ============================================================================
+
+class ConflictCheckRequest(BaseModel):
+    """Request model for checking rule conflicts."""
+    keywords: List[str]
+    exclude_keywords: Optional[List[str]] = []
+    rule_id: Optional[int] = None  # Exclude this rule from conflict check (for edit mode)
+
+
+class RuleConflict(BaseModel):
+    """A conflicting rule."""
+    rule_id: int
+    category_id: int
+    category_name: str
+    keywords: List[str]
+    overlapping_keywords: List[str]  # Keywords that overlap
+    severity: str  # "error" for exact duplicate, "warning" for partial overlap
+
+
+class ConflictCheckResponse(BaseModel):
+    """Response model for conflict check endpoint."""
+    conflicts: List[RuleConflict]
+    has_conflicts: bool
+
+
+@router.post("/rules/check-conflicts", response_model=ConflictCheckResponse)
+def check_rule_conflicts(
+    request: ConflictCheckRequest,
+    ctx: FilteredQueryContext = Depends(get_filtered_context)
+):
+    """
+    Check if a rule pattern conflicts with existing rules.
+    
+    A conflict occurs when:
+    - exact duplicate: same keyword exists in another rule (severity: error)
+    - partial overlap: keyword is substring of or contains another keyword (severity: warning)
+    """
+    if not request.keywords:
+        return ConflictCheckResponse(conflicts=[], has_conflicts=False)
+    
+    # Get all existing rules for user/person
+    query = ctx.raw_query(Rule, Category.name.label('category_name')).join(
+        Category, Rule.category_id == Category.id
+    ).filter(Rule.user_id == ctx.user_id)
+    
+    if ctx.person_id is not None:
+        query = query.filter(Rule.person_id == ctx.person_id)
+    
+    # Exclude current rule if editing
+    if request.rule_id:
+        query = query.filter(Rule.id != request.rule_id)
+    
+    existing_rules = query.all()
+    
+    conflicts = []
+    input_keywords_upper = [kw.upper() for kw in request.keywords]
+    
+    for rule, category_name in existing_rules:
+        overlapping = []
+        severity = "warning"
+        
+        for existing_kw in (rule.keywords or []):
+            existing_kw_upper = existing_kw.upper()
+            
+            for input_kw in request.keywords:
+                input_kw_upper = input_kw.upper()
+                
+                # Handle OR patterns - split by pipe
+                input_alternatives = [alt.strip() for alt in input_kw_upper.split('|')]
+                existing_alternatives = [alt.strip() for alt in existing_kw_upper.split('|')]
+                
+                for input_alt in input_alternatives:
+                    for existing_alt in existing_alternatives:
+                        if not input_alt or not existing_alt:
+                            continue
+                        
+                        # Exact match - error severity
+                        if input_alt == existing_alt:
+                            overlapping.append(existing_kw)
+                            severity = "error"
+                            break
+                        
+                        # Substring match - warning severity (but don't downgrade from error)
+                        if input_alt in existing_alt or existing_alt in input_alt:
+                            if existing_kw not in overlapping:
+                                overlapping.append(existing_kw)
+                            # Don't change severity if already error
+                    
+                    if severity == "error":
+                        break
+        
+        if overlapping:
+            conflicts.append(RuleConflict(
+                rule_id=rule.id,
+                category_id=rule.category_id,
+                category_name=category_name,
+                keywords=rule.keywords or [],
+                overlapping_keywords=list(set(overlapping)),
+                severity=severity
+            ))
+    
+    return ConflictCheckResponse(
+        conflicts=conflicts,
+        has_conflicts=len(conflicts) > 0
+    )
+
+
+# ============================================================================
+# LLM Rule Generation Endpoints
+# ============================================================================
+
 class GenerateRuleRequest(BaseModel):
     merchant: str
     description: str

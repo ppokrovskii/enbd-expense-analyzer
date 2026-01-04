@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Category } from "../../categories/page";
 import { API_BASE_URL } from "../../constants/api";
+import RuleEditor from "./RuleEditor";
 
 interface RulesFilterProps {
   selectedCategory: Category | null;
@@ -49,6 +50,10 @@ export default function RulesFilter({
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [offset, setOffset] = useState(0);
+  
+  // Editing state
+  const [editingRuleId, setEditingRuleId] = useState<number | null>(null);
+  const [showAddRule, setShowAddRule] = useState(false);
   
   const containerRef = useRef<HTMLDivElement>(null);
   const loadingRef = useRef(false);
@@ -102,6 +107,7 @@ export default function RulesFilter({
     if (!selectedCategory && selectedCategoryIds.length === 0) {
       setOffset(0);
       setAllRules([]);
+      setEditingRuleId(null);
       fetchRules(0, false);
     }
   }, [selectedCategory, selectedCategoryIds.length, searchQuery, fetchRules]);
@@ -126,12 +132,37 @@ export default function RulesFilter({
     }
   }, [handleScroll, selectedCategory, selectedCategoryIds.length]);
 
+  // Handle rule save
+  const handleRuleSave = () => {
+    setEditingRuleId(null);
+    // Refresh rules list
+    setOffset(0);
+    setAllRules([]);
+    fetchRules(0, false);
+    onCategoryUpdate();
+  };
+
+  // Handle rule delete
+  const handleRuleDelete = () => {
+    setEditingRuleId(null);
+    // Refresh rules list
+    setOffset(0);
+    setAllRules([]);
+    fetchRules(0, false);
+    onCategoryUpdate();
+  };
+
   // Filter rules by search query (for single category view)
   const filterRulesBySearch = (rules: string[]) => {
     if (!searchQuery) return rules;
     const query = searchQuery.toLowerCase();
     return rules.filter(rule => rule.toLowerCase().includes(query));
   };
+
+  // Get currently editing rule
+  const editingRule = editingRuleId 
+    ? allRules.find(r => r.id === editingRuleId) 
+    : null;
 
   // If single category selected, show its rules as filters
   if (selectedCategory) {
@@ -231,7 +262,7 @@ export default function RulesFilter({
     );
   }
 
-  // No category selected - show all rules with infinite scroll
+  // No category selected - show all rules with inline editing
   return (
     <div ref={containerRef} className="p-4 h-full overflow-y-auto">
       <div className="mb-4">
@@ -246,7 +277,7 @@ export default function RulesFilter({
         <p className="text-caption text-[var(--color-text-secondary)]">
           {searchQuery 
             ? `Showing rules matching "${searchQuery}"`
-            : 'Showing all rules from all categories'}
+            : 'Click a rule to edit it'}
         </p>
       </div>
 
@@ -264,21 +295,44 @@ export default function RulesFilter({
         <>
           <div className="space-y-2">
             {allRules.map((rule) => {
-              // Display all keywords in the rule
+              // Check if this rule is being edited
+              if (editingRuleId === rule.id && editingRule) {
+                return (
+                  <RuleEditor
+                    key={rule.id}
+                    rule={editingRule}
+                    categories={categories}
+                    onSave={handleRuleSave}
+                    onCancel={() => setEditingRuleId(null)}
+                    onDelete={handleRuleDelete}
+                  />
+                );
+              }
+
+              // Display rule card
               const keywordsDisplay = rule.keywords.join(', ');
               const patternType = getPatternTypeForKeywords(rule.keywords);
 
               return (
                 <div
                   key={rule.id}
-                  className="p-3 rounded-lg bg-[var(--color-bg-tertiary)] text-left"
+                  onClick={() => setEditingRuleId(rule.id)}
+                  className="p-3 rounded-lg bg-[var(--color-bg-tertiary)] text-left cursor-pointer hover:bg-[var(--color-bg-secondary)] transition-apple group"
                 >
                   <div className="flex items-center gap-2 mb-1">
                     <span className="text-body font-medium text-[var(--color-text-primary)] truncate flex-1">
                       {keywordsDisplay}
                     </span>
+                    <svg 
+                      className="w-4 h-4 text-[var(--color-text-tertiary)] opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" 
+                      fill="none" 
+                      stroke="currentColor" 
+                      viewBox="0 0 24 24"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                    </svg>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <span
                       className={`inline-flex items-center px-2 py-0.5 rounded text-caption font-medium ${getPatternTypeBadgeClass(
                         patternType
@@ -289,6 +343,16 @@ export default function RulesFilter({
                     <span className="text-caption text-[var(--color-text-secondary)]">
                       → {rule.category_name}
                     </span>
+                    {rule.exclude_keywords && rule.exclude_keywords.length > 0 && (
+                      <span className="text-caption text-[var(--color-text-tertiary)]">
+                        (excludes: {rule.exclude_keywords.join(', ')})
+                      </span>
+                    )}
+                    {rule.priority > 0 && (
+                      <span className="text-caption text-[var(--color-text-tertiary)]">
+                        [priority: {rule.priority}]
+                      </span>
+                    )}
                   </div>
                 </div>
               );
