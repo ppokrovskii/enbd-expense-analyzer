@@ -352,9 +352,20 @@ export default function TransactionsPage() {
       <div className="card p-6 space-y-4">
         {/* Quick Date Filters */}
         <div>
-          <label className="block text-caption text-[var(--color-text-secondary)] mb-2">
-            Quick Filters
-          </label>
+          <div className="flex items-center justify-between mb-2">
+            <label className="text-caption text-[var(--color-text-secondary)]">
+              Quick Filters
+            </label>
+            <button
+              onClick={handleFilterReset}
+              className="text-caption text-[var(--color-text-tertiary)] hover:text-[var(--color-primary)] transition-apple flex items-center gap-1"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              Reset All
+            </button>
+          </div>
           <div className="flex flex-wrap gap-2">
             <button
               onClick={() => handleQuickFilter('this-month')}
@@ -459,23 +470,13 @@ export default function TransactionsPage() {
           </div>
         </div>
         
-        {/* Account Filter + Clear Button */}
+        {/* Account Filter */}
         <div className="flex items-center gap-3 mt-4 pt-4 border-t border-[var(--color-border-light)]">
           <FilterPanel 
             onFilterChange={handleFilterChange} 
             onReset={handleFilterReset}
             currentFilters={filters}
           />
-          
-          {/* Clear All Button */}
-          {(filters.startDate || filters.endDate || filters.merchant || filters.accounts.length > 0) && (
-            <button
-              onClick={handleFilterReset}
-              className="text-caption font-medium text-[var(--color-text-secondary)] hover:text-[var(--color-primary)] transition-apple"
-            >
-              Clear all filters
-            </button>
-          )}
         </div>
       </div>
 
