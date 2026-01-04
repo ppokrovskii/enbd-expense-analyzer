@@ -85,6 +85,9 @@ export default function ReportsPage() {
   const [insights, setInsights] = useState<string[]>([]);
   const [generatingInsights, setGeneratingInsights] = useState(false);
 
+  // Chart groupBy state
+  const [groupBy, setGroupBy] = useState<'week' | 'month'>('month');
+
   // Memoize chart filters to prevent unnecessary re-renders
   const chartFilters = useMemo(() => ({
     startDate: filters.startDate,
@@ -92,14 +95,16 @@ export default function ReportsPage() {
     categories: [] as string[],
     accounts: [] as string[],
     merchant: '',
-    groupBy: 'month' as const
-  }), [filters.startDate, filters.endDate]);
+    groupBy: groupBy
+  }), [filters.startDate, filters.endDate, groupBy]);
 
   // Stable empty array for filteredCategories prop
   const emptyCategories = useMemo(() => [] as string[], []);
 
-  // Stable no-op callback for SpendingChart
-  const noopGroupByChange = useCallback(() => {}, []);
+  // Callback for groupBy change
+  const handleGroupByChange = useCallback((value: 'week' | 'month') => {
+    setGroupBy(value);
+  }, []);
 
   // Listen for person changes
   useEffect(() => {
@@ -811,7 +816,7 @@ export default function ReportsPage() {
         <h2 className="text-heading text-[var(--color-text-primary)] mb-4">2. Expense Overview</h2>
         <SpendingChart
           filters={chartFilters}
-          onGroupByChange={noopGroupByChange}
+          onGroupByChange={handleGroupByChange}
           filterMode="none"
           filteredCategories={emptyCategories}
           allAvailableCategories={emptyCategories}

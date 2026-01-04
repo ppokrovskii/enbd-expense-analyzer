@@ -338,136 +338,34 @@ export default function MerchantList({
 
   return (
     <div className="space-y-4">
-      {/* Action Bar */}
-      {selectedMerchants.size > 0 && (
-        <div className="card px-4 py-3 bg-[var(--color-primary)]/5 border border-[var(--color-primary)]/20">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <span className="text-body font-medium text-[var(--color-primary)]">
-                {selectedMerchants.size} merchant{selectedMerchants.size !== 1 ? 's' : ''} selected
-              </span>
-              <button
-                onClick={() => setSelectedMerchants(new Set())}
-                className="text-caption text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] transition-apple"
-              >
-                Clear selection
-              </button>
-            </div>
-            <button
-              onClick={handleAICategorize}
-              disabled={isAiProcessing}
-              className="px-4 py-2 text-sm text-white rounded-lg transition-all flex items-center gap-2 font-medium shadow-md hover:shadow-lg hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
-              style={{
-                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%)',
-              }}
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
-              </svg>
-              AI Categorize Selected
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Pagination (above table) */}
-      {totalPages > 1 ? (
-        <div className="card px-4 py-3">
-          <div className="flex items-center justify-between gap-4">
-            {/* Mobile pagination */}
-            <div className="flex-1 flex justify-between sm:hidden">
-              <button
-                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                disabled={currentPage === 1}
-                className="btn btn-secondary disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Previous
-              </button>
-              <button
-                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                disabled={currentPage === totalPages}
-                className="btn btn-secondary disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Next
-              </button>
-            </div>
-            
-            {/* Desktop pagination */}
-            <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between sm:gap-6">
-              {/* Info section */}
-              <div className="flex items-center gap-4">
-                <p className="text-body text-[var(--color-text-secondary)]">
-                  <span className="font-medium text-[var(--color-text-primary)]">{data.total}</span> merchants • Total: {' '}
-                  <span className="font-medium text-[var(--color-text-primary)]">{formatAmount(data.total_amount)}</span>
-                </p>
-                
-                {/* Page size selector */}
-                <div className="flex items-center gap-2">
-                  <label className="text-caption text-[var(--color-text-secondary)] whitespace-nowrap">
-                    Per page:
-                  </label>
-                  <select
-                    value={pageSize}
-                    onChange={(e) => handlePageSizeChange(parseInt(e.target.value, 10))}
-                    className="input py-1 px-2 text-body"
-                  >
-                    <option value={25}>25</option>
-                    <option value={50}>50</option>
-                    <option value={100}>100</option>
-                    <option value={200}>200</option>
-                  </select>
-                </div>
-              </div>
-              
-              {/* Page navigation */}
-              <div>
-                <nav className="relative z-0 inline-flex rounded-lg shadow-apple-sm -space-x-px">
-                  <button
-                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                    disabled={currentPage === 1}
-                    className="relative inline-flex items-center px-3 py-2 rounded-l-lg border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] text-body font-medium text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-secondary)] disabled:opacity-50 disabled:cursor-not-allowed transition-apple"
-                  >
-                    ←
-                  </button>
-                  {pageNumbers.map((pageNum) => (
-                    <button
-                      key={pageNum}
-                      onClick={() => setCurrentPage(pageNum)}
-                      className={`relative inline-flex items-center px-4 py-2 border text-body font-medium transition-apple ${
-                        currentPage === pageNum
-                          ? "z-10 bg-[var(--color-primary)] border-[var(--color-primary)] text-white"
-                          : "bg-[var(--color-bg-tertiary)] border-[var(--color-border)] text-[var(--color-text-primary)] hover:bg-[var(--color-bg-secondary)]"
-                      }`}
-                    >
-                      {pageNum}
-                    </button>
-                  ))}
-                  <button
-                    onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                    disabled={currentPage === totalPages}
-                    className="relative inline-flex items-center px-3 py-2 rounded-r-lg border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] text-body font-medium text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-secondary)] disabled:opacity-50 disabled:cursor-not-allowed transition-apple"
-                  >
-                    →
-                  </button>
-                </nav>
-              </div>
-            </div>
-          </div>
-        </div>
-      ) : (
-        /* Summary when only 1 page */
-        <div className="card px-4 py-3">
-          <div className="flex items-center justify-between">
+      {/* Combined Toolbar: Selection + Pagination */}
+      <div className={`card px-4 py-3 ${selectedMerchants.size > 0 ? 'bg-[var(--color-primary)]/5 border border-[var(--color-primary)]/20' : ''}`}>
+        <div className="flex items-center justify-between gap-4">
+          {/* Left side: Info + Selection */}
+          <div className="flex items-center gap-4">
             <p className="text-body text-[var(--color-text-secondary)]">
               <span className="font-medium text-[var(--color-text-primary)]">{data.total}</span> 
-              {' '}{data.total === 1 ? 'merchant' : 'merchants'} • Total: {' '}
+              {' '}{data.total === 1 ? 'merchant' : 'merchants'} • {' '}
               <span className="font-medium text-[var(--color-text-primary)]">{formatAmount(data.total_amount)}</span>
             </p>
             
-            <div className="flex items-center gap-2">
-              <label className="text-caption text-[var(--color-text-secondary)] whitespace-nowrap">
-                Per page:
-              </label>
+            {selectedMerchants.size > 0 && (
+              <>
+                <span className="text-[var(--color-border-medium)]">•</span>
+                <span className="text-body font-medium text-[var(--color-primary)]">
+                  {selectedMerchants.size} selected
+                </span>
+                <button
+                  onClick={() => setSelectedMerchants(new Set())}
+                  className="text-caption text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] transition-apple"
+                >
+                  Clear
+                </button>
+              </>
+            )}
+            
+            {/* Page size selector */}
+            <div className="hidden sm:flex items-center gap-2">
               <select
                 value={pageSize}
                 onChange={(e) => handlePageSizeChange(parseInt(e.target.value, 10))}
@@ -480,8 +378,59 @@ export default function MerchantList({
               </select>
             </div>
           </div>
+          
+          {/* Right side: AI Button + Pagination */}
+          <div className="flex items-center gap-3">
+            {selectedMerchants.size > 0 && (
+              <button
+                onClick={handleAICategorize}
+                disabled={isAiProcessing}
+                className="px-3 py-1.5 text-sm text-white rounded-lg transition-all flex items-center gap-1.5 font-medium shadow-md hover:shadow-lg hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
+                style={{
+                  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%)',
+                }}
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+                </svg>
+                AI Categorize
+              </button>
+            )}
+            
+            {totalPages > 1 && (
+              <nav className="hidden sm:inline-flex relative z-0 rounded-lg shadow-apple-sm -space-x-px">
+                <button
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                  className="relative inline-flex items-center px-2.5 py-1.5 rounded-l-lg border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] text-body font-medium text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-secondary)] disabled:opacity-50 disabled:cursor-not-allowed transition-apple"
+                >
+                  ←
+                </button>
+                {pageNumbers.map((pageNum) => (
+                  <button
+                    key={pageNum}
+                    onClick={() => setCurrentPage(pageNum)}
+                    className={`relative inline-flex items-center px-3 py-1.5 border text-body font-medium transition-apple ${
+                      currentPage === pageNum
+                        ? "z-10 bg-[var(--color-primary)] border-[var(--color-primary)] text-white"
+                        : "bg-[var(--color-bg-tertiary)] border-[var(--color-border)] text-[var(--color-text-primary)] hover:bg-[var(--color-bg-secondary)]"
+                    }`}
+                  >
+                    {pageNum}
+                  </button>
+                ))}
+                <button
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages}
+                  className="relative inline-flex items-center px-2.5 py-1.5 rounded-r-lg border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] text-body font-medium text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-secondary)] disabled:opacity-50 disabled:cursor-not-allowed transition-apple"
+                >
+                  →
+                </button>
+              </nav>
+            )}
+          </div>
         </div>
-      )}
+      </div>
 
       {/* Table */}
       <div className="card overflow-hidden">
