@@ -38,14 +38,17 @@ interface SpendingChartProps {
   onClearFilters?: () => void;
 }
 
+// Stable default empty arrays (outside component to prevent recreation)
+const EMPTY_ARRAY: string[] = [];
+
 export default function SpendingChart({ 
   filters, 
   onGroupByChange, 
   onCategoryToggle,
   onCategoryExclude,
   filterMode = 'none',
-  filteredCategories = [],
-  allAvailableCategories = [],
+  filteredCategories = EMPTY_ARRAY,
+  allAvailableCategories = EMPTY_ARRAY,
   onPeriodClick,
   onClearFilters
 }: SpendingChartProps) {
@@ -92,6 +95,10 @@ export default function SpendingChart({
     fetchCategoryColors();
   }, [personVersion]);
 
+  // Serialize array dependencies to avoid reference comparison issues
+  const accountsKey = JSON.stringify(filters.accounts || []);
+  const filteredCategoriesKey = JSON.stringify(filteredCategories);
+
   useEffect(() => {
     // Debounce rapid filter changes to prevent jumping
     if (fetchTimeoutRef.current) {
@@ -109,7 +116,7 @@ export default function SpendingChart({
       }
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters.startDate, filters.endDate, filters.accounts, filters.merchant, filters.groupBy, filterMode, filteredCategories, personVersion]);
+  }, [filters.startDate, filters.endDate, accountsKey, filters.merchant, filters.groupBy, filterMode, filteredCategoriesKey, personVersion]);
 
   const fetchCategoryTotals = async () => {
     // Fetch totals for all categories without category filter

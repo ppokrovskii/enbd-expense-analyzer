@@ -21,13 +21,26 @@ export default function TransactionsPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
   
-  // Initialize state from URL params
+  // Initialize state from URL params with sensible defaults
   const [filters, setFilters] = useState<FilterValues>(() => {
-    const startDate = searchParams.get('startDate') || '';
-    const endDate = searchParams.get('endDate') || '';
+    const urlStartDate = searchParams.get('startDate');
+    const urlEndDate = searchParams.get('endDate');
     const merchant = searchParams.get('merchant') || '';
     const categories = searchParams.getAll('category');
     const accounts = searchParams.getAll('account');
+    
+    // If no dates in URL, default to last 3 months
+    let startDate = urlStartDate || '';
+    let endDate = urlEndDate || '';
+    
+    if (!urlStartDate && !urlEndDate && searchParams.toString() === '') {
+      const now = new Date();
+      const threeMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 3, 1);
+      const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+      
+      startDate = threeMonthsAgo.toISOString().split('T')[0];
+      endDate = endOfMonth.toISOString().split('T')[0];
+    }
     
     return {
       startDate,
@@ -106,14 +119,20 @@ export default function TransactionsPage() {
   };
 
   const handleFilterReset = () => {
+    // Reset to default 3 months range
+    const now = new Date();
+    const threeMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 3, 1);
+    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    
     setFilters({
-      startDate: "",
-      endDate: "",
+      startDate: threeMonthsAgo.toISOString().split('T')[0],
+      endDate: endOfMonth.toISOString().split('T')[0],
       categories: [],
       accounts: [],
       merchant: ""
     });
-    setSelectedCategories([]);
+    setFilteredCategories(['Transfer Between My Accounts']);
+    setFilterMode('blacklist');
   };
 
   const handleCategoryToggle = (category: string) => {

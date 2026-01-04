@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { getApiHeaders } from "../utils/api";
 import MetricCard from "../components/ui/MetricCard";
 import SpendingChart from "../components/SpendingChart";
@@ -57,6 +57,22 @@ export default function ReportsPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Memoize chart filters to prevent unnecessary re-renders
+  const chartFilters = useMemo(() => ({
+    startDate: filters.startDate,
+    endDate: filters.endDate,
+    categories: [] as string[],
+    accounts: [] as string[],
+    merchant: '',
+    groupBy: 'month' as const
+  }), [filters.startDate, filters.endDate]);
+
+  // Stable empty array for filteredCategories prop
+  const emptyCategories = useMemo(() => [] as string[], []);
+
+  // Stable no-op callback for SpendingChart
+  const noopGroupByChange = useCallback(() => {}, []);
+
   // Listen for person changes
   useEffect(() => {
     const handlePersonChange = () => {
@@ -78,13 +94,18 @@ export default function ReportsPage() {
     setError(null);
 
     try {
+      // Calculate period days
+      const start = new Date(filters.startDate);
+      const end = new Date(filters.endDate);
+      const periodDays = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+
       // Fetch summary stats
       const statsParams = new URLSearchParams();
       if (filters.startDate) statsParams.set('start_date', filters.startDate);
       if (filters.endDate) statsParams.set('end_date', filters.endDate);
 
       const statsResponse = await fetch(
-        `http://localhost:8000/api/data/stats?${statsParams.toString()}`,
+        `http://localhost:8000/api/stats/summary?${statsParams.toString()}`,
         { headers: getApiHeaders() }
       );
 
@@ -92,25 +113,40 @@ export default function ReportsPage() {
       const statsData = await statsResponse.json();
       setStats(statsData);
 
-      // Fetch category breakdown (top categories)
-      const breakdownResponse = await fetch(
-        `http://localhost:8000/api/data/category-breakdown?${statsParams.toString()}`,
+      // Fetch insights to get category breakdown
+      const insightsResponse = await fetch(
+        `http://localhost:8000/api/insights/generate?period_days=${periodDays}`,
         { headers: getApiHeaders() }
       );
 
-      if (!breakdownResponse.ok) throw new Error('Failed to fetch breakdown');
-      const breakdownData = await breakdownResponse.json();
-      setCategoryBreakdown(breakdownData.slice(0, 7)); // Top 7 categories
-
-      // Fetch detailed category data
-      const detailsResponse = await fetch(
-        `http://localhost:8000/api/data/category-details?${statsParams.toString()}`,
-        { headers: getApiHeaders() }
-      );
-
-      if (!detailsResponse.ok) throw new Error('Failed to fetch details');
-      const detailsData = await detailsResponse.json();
-      setCategoryDetails(detailsData);
+      if (insightsResponse.ok) {
+        const insightsData = await insightsResponse.json();
+        
+        // Extract category data from insights
+        const categoryInsight = insightsData.insights?.find(
+          (i: any) => i.type === 'category_analysis'
+        );
+        
+        if (categoryInsight?.data?.categories) {
+          // Transform to our format
+          const breakdown = categoryInsight.data.categories.map((cat: any) => ({
+            category: cat.category,
+            total: Math.abs(cat.amount),
+            percentage: cat.percentage,
+            transaction_count: cat.count || 0
+          }));
+          setCategoryBreakdown(breakdown.slice(0, 7));
+          
+          // Create detailed view
+          const details = breakdown.map((cat: any) => ({
+            category: cat.category,
+            total: cat.total,
+            count: cat.transaction_count,
+            top_transactions: []
+          }));
+          setCategoryDetails(details);
+        }
+      }
 
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load report data');
@@ -512,15 +548,11 @@ export default function ReportsPage() {
       <div>
         <h2 className="text-heading text-[var(--color-text-primary)] mb-4">Expense Overview</h2>
         <SpendingChart
-          filters={{
-            startDate: filters.startDate,
-            endDate: filters.endDate,
-            categories: [],
-            accounts: [],
-            merchant: '',
-            groupBy: 'month'
-          }}
-          onGroupByChange={() => {}}
+          filters={chartFilters}
+          onGroupByChange={noopGroupByChange}
+          filterMode="none"
+          filteredCategories={emptyCategories}
+          allAvailableCategories={emptyCategories}
         />
       </div>
 
