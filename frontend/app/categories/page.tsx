@@ -356,9 +356,9 @@ export default function CategoriesPage() {
   }
 
   return (
-    <div className="h-screen flex flex-col">
+    <div className="min-h-screen flex flex-col">
       {/* Top Section - Matches Transactions Page Layout */}
-      <div className="space-y-6 p-6 pb-4">
+      <div className="space-y-6 p-6">
         {/* Page Title */}
         <div>
           <h1 className="text-title text-[var(--color-text-primary)]">Category Management</h1>
@@ -549,9 +549,9 @@ export default function CategoriesPage() {
       </div>
 
       {/* Main Content - 2 Column Layout */}
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex min-h-[500px]">
         {/* Left Panel - Rules Filter (25%) */}
-        <div className="w-[25%] border-r border-[var(--color-border)] bg-[var(--color-bg-secondary)] overflow-y-auto">
+        <div className="w-[25%] border-r border-[var(--color-border)] bg-[var(--color-bg-secondary)]">
           <RulesFilter
             selectedCategory={selectedCategory}
             selectedRuleIndex={selectedRuleIndex}
@@ -564,7 +564,7 @@ export default function CategoriesPage() {
         </div>
 
         {/* Right Panel - Merchants Grid (75%) */}
-        <div className="flex-1 bg-[var(--color-bg-primary)] overflow-y-auto">
+        <div className="flex-1 bg-[var(--color-bg-primary)]">
           <MerchantsGrid
             selectedCategoryIds={selectedCategoryIds}
             selectedCategory={selectedCategory}
