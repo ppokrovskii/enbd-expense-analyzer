@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from datetime import datetime, timedelta
 
 from app.shared.database import get_db
-from app.shared.dependencies import get_user_id
+from app.shared.dependencies import get_user_id, get_person_id
 from .models import Category, Rule
 from .service import CategoryService
 from .llm_service import LLMCategorizationService
@@ -552,11 +552,12 @@ def ai_bulk_suggest(
 def ai_bulk_apply(
     request: AIBulkApplyRequest,
     db: Session = Depends(get_db),
-    user_id: str = Depends(get_user_id)
+    user_id: str = Depends(get_user_id),
+    person_id: Optional[int] = Depends(get_person_id)
 ):
     """Apply AI bulk suggestions to create/update rules and categorize transactions.
     
-    SECURITY: All queries are filtered by user_id to ensure data isolation.
+    SECURITY: All queries are filtered by user_id and person_id to ensure data isolation.
     """
     if not request.suggestions:
         return {"message": "No suggestions to apply"}
@@ -574,27 +575,33 @@ def ai_bulk_apply(
         if not merchant or not category_name:
             continue
         
-        # SECURITY: Filter category by user_id
-        category = db.query(Category).filter(
+        # SECURITY: Filter category by user_id and person_id
+        category_query = db.query(Category).filter(
             Category.name == category_name,
             Category.user_id == user_id
-        ).first()
+        )
+        if person_id is not None:
+            category_query = category_query.filter(Category.person_id == person_id)
+        category = category_query.first()
         
         if not category:
             if create_new:
-                # SECURITY: Create category with user_id
-                category = Category(name=category_name, user_id=user_id, keywords=[])
+                # SECURITY: Create category with user_id and person_id
+                category = Category(name=category_name, user_id=user_id, person_id=person_id, keywords=[])
                 db.add(category)
                 db.commit()
                 created_categories.append(category_name)
             else:
                 continue
         
-        # SECURITY: Only update transactions belonging to this user
-        count = db.query(Transaction).filter(
+        # SECURITY: Only update transactions belonging to this user and person
+        transaction_query = db.query(Transaction).filter(
             Transaction.user_id == user_id,
             Transaction.merchant == merchant
-        ).update({"category": category_name})
+        )
+        if person_id is not None:
+            transaction_query = transaction_query.filter(Transaction.person_id == person_id)
+        count = transaction_query.update({"category": category_name})
         
         transactions_affected += count
     
@@ -602,8 +609,10 @@ def ai_bulk_apply(
     
     if request.auto_create_rules:
         category_service = CategoryService()
-        # SECURITY: Pass user_id to ensure only user's transactions are processed
-        additional_affected = category_service.categorize_transactions(db, user_id=user_id, force_recategorize_all=True)
+        # SECURITY: Pass user_id and person_id to ensure only user's transactions are processed
+        additional_affected = category_service.categorize_transactions(
+            db, user_id=user_id, force_recategorize_all=True, person_id=person_id
+        )
         transactions_affected += additional_affected
     
     return {

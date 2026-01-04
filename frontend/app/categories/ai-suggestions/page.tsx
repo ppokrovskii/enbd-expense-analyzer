@@ -13,6 +13,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import SparkleIcon from "../../components/ui/SparkleIcon";
+import { getApiHeaders } from "../../utils/api";
 
 interface AISuggestion {
   merchant: string;
@@ -85,7 +86,9 @@ export default function AICategorizationSuggestionsPage() {
     
     const init = async () => {
       try {
-        const response = await fetch("http://localhost:8000/api/categories/");
+        const response = await fetch("http://localhost:8000/api/categories/", {
+          headers: getApiHeaders(),
+        });
         if (!response.ok) throw new Error("Failed to fetch categories");
         const categories = await response.json();
         setAllCategories(categories);
@@ -120,7 +123,7 @@ export default function AICategorizationSuggestionsPage() {
         "http://localhost:8000/api/categories/ai-bulk-suggest",
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: getApiHeaders(),
           body: JSON.stringify({
             days: days,
             level: "global",
@@ -182,7 +185,7 @@ export default function AICategorizationSuggestionsPage() {
     try {
       const response = await fetch("http://localhost:8000/api/categories/", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: getApiHeaders(),
         body: JSON.stringify({ name: categoryName, keywords: [] }),
       });
       
@@ -203,7 +206,7 @@ export default function AICategorizationSuggestionsPage() {
       setAutocompleteQuery('');
       setAutocompleteIndex(null);
       
-      showToast(`✓ Category "${categoryName}" created`);
+      showToast(`Category "${categoryName}" created`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create category");
     } finally {
@@ -245,7 +248,7 @@ export default function AICategorizationSuggestionsPage() {
         "http://localhost:8000/api/categories/ai-bulk-apply",
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: getApiHeaders(),
           body: JSON.stringify(payload),
         }
       );
@@ -259,7 +262,7 @@ export default function AICategorizationSuggestionsPage() {
       setSuggestions(newSuggestions);
       setAppliedCount(prev => prev + pending.length);
       
-      showToast(`✓ Applied ${pending.length} suggestion${pending.length > 1 ? 's' : ''}`);
+      showToast(`Applied ${pending.length} suggestion${pending.length > 1 ? 's' : ''}`);
       
       // Clear all applied suggestions after a short delay
       setTimeout(() => {
@@ -292,7 +295,7 @@ export default function AICategorizationSuggestionsPage() {
         "http://localhost:8000/api/categories/ai-bulk-apply",
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: getApiHeaders(),
           body: JSON.stringify(payload),
         }
       );
@@ -304,7 +307,7 @@ export default function AICategorizationSuggestionsPage() {
       setSuggestions(newSuggestions);
       setAppliedCount(prev => prev + 1);
       
-      showToast(`✓ ${suggestion.merchant} → ${suggestion.edited_category}`);
+      showToast(`${suggestion.merchant} → ${suggestion.edited_category}`);
       
       setTimeout(() => {
         setSuggestions(prev => prev.filter((_, i) => i !== index));
