@@ -243,25 +243,21 @@ export default function TransactionList({
     }).format(Math.abs(amount));
   };
 
-  const getCategoryColor = (category: string) => {
-    // Use color from API if available
+  const getCategoryBadgeClass = (category: string) => {
     const color = categoryColors[category];
-    if (color) {
-      // Convert hex color to Tailwind-style classes
-      return `px-2.5 py-1 inline-flex text-label font-medium rounded-full border`;
+    if (!color || category === 'Other' || !category) {
+      return "category-badge category-badge-uncategorized";
     }
-    
-    // Fallback to default gray for unknown categories
-    return "bg-gray-500/20 text-gray-300 border border-gray-500/30";
+    return "category-badge";
   };
   
   const getCategoryStyle = (category: string): React.CSSProperties | undefined => {
     const color = categoryColors[category];
-    if (color) {
+    if (color && category !== 'Other') {
+      // Use 25% opacity background for better visibility
       return {
-        backgroundColor: `${color}33`, // 20% opacity
+        backgroundColor: `${color}40`,
         color: color,
-        borderColor: `${color}66`, // 40% opacity
       };
     }
     return undefined;
@@ -570,10 +566,10 @@ export default function TransactionList({
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span 
-                      className={getCategoryColor(transaction.category)}
+                      className={getCategoryBadgeClass(transaction.category)}
                       style={getCategoryStyle(transaction.category)}
                     >
-                      {transaction.category}
+                      {transaction.category || 'Uncategorized'}
                     </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-body text-[var(--color-text-secondary)]">

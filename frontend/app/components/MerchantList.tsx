@@ -227,23 +227,24 @@ export default function MerchantList({
     }).format(Math.abs(amount));
   };
 
-  const getCategoryColor = (category: string | null) => {
-    if (!category) return "bg-gray-500/20 text-gray-300 border border-gray-500/30";
-    const color = categoryColors[category];
-    if (color) {
-      return `px-2.5 py-1 inline-flex text-label font-medium rounded-full border`;
+  const getCategoryBadgeClass = (category: string | null) => {
+    if (!category || category === 'Other') {
+      return "category-badge category-badge-uncategorized";
     }
-    return "bg-gray-500/20 text-gray-300 border border-gray-500/30";
+    const color = categoryColors[category];
+    if (!color) {
+      return "category-badge category-badge-uncategorized";
+    }
+    return "category-badge";
   };
   
   const getCategoryStyle = (category: string | null): React.CSSProperties | undefined => {
-    if (!category) return undefined;
+    if (!category || category === 'Other') return undefined;
     const color = categoryColors[category];
     if (color) {
       return {
-        backgroundColor: `${color}33`,
+        backgroundColor: `${color}40`,
         color: color,
-        borderColor: `${color}66`,
       };
     }
     return undefined;
@@ -513,7 +514,7 @@ export default function MerchantList({
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span 
-                      className={getCategoryColor(merchant.category)}
+                      className={getCategoryBadgeClass(merchant.category)}
                       style={getCategoryStyle(merchant.category)}
                     >
                       {merchant.category || 'Uncategorized'}

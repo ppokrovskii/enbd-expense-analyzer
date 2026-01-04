@@ -33,6 +33,7 @@ def get_section_types():
                 "value": t.value,
                 "label": ReportService.SECTION_TYPE_NAMES.get(t.value, t.value),
                 "has_ai_generate": t.value in [
+                    SectionType.EXPENSE_OVERVIEW.value,
                     SectionType.RECURRING.value,
                     SectionType.TRENDS.value,
                     SectionType.INSIGHTS.value,
