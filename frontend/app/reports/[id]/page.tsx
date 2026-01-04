@@ -284,26 +284,10 @@ export default function ReportEditorPage() {
     }
   }, [reportId]);
 
-  const exportPDF = async () => {
-    // Client-side PDF generation using html2pdf.js
-    try {
-      const html2pdf = (await import('html2pdf.js')).default;
-      const element = document.getElementById('report-content');
-      if (!element) return;
-      
-      const opt = {
-        margin: [10, 10, 10, 10],
-        filename: `${report?.name || 'report'}.pdf`,
-        image: { type: 'jpeg', quality: 0.98 },
-        html2canvas: { scale: 2, useCORS: true },
-        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-        pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
-      };
-      
-      html2pdf().set(opt).from(element).save();
-    } catch (err) {
-      setError('Failed to generate PDF. Please try again.');
-    }
+  const exportPDF = () => {
+    // Use browser print for true WYSIWYG PDF export
+    // User can save as PDF from the print dialog
+    window.print();
   };
 
   const renderSection = (section: ReportSection) => {

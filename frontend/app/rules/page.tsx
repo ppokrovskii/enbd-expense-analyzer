@@ -110,7 +110,7 @@ export default function RulesManagerPage() {
     setError(null);
     
     try {
-      let url = "http://localhost:8000/api/categories/rules/?limit=100";
+      let url = "http://localhost:8000/api/rules/?limit=100";
       if (categoryFilter) url += `&category_id=${categoryFilter}`;
       if (searchQuery) url += `&search=${encodeURIComponent(searchQuery)}`;
       
@@ -167,7 +167,7 @@ export default function RulesManagerPage() {
       const keywords = editingRule.edited_keywords.split("|").map(k => k.trim()).filter(Boolean);
       const excludeKeywords = editingRule.edited_exclude_keywords.split("|").map(k => k.trim()).filter(Boolean);
       
-      const response = await fetch("http://localhost:8000/api/categories/rules/test", {
+      const response = await fetch("http://localhost:8000/api/rules/test", {
         method: "POST",
         headers: getApiHeaders(),
         body: JSON.stringify({
@@ -195,7 +195,7 @@ export default function RulesManagerPage() {
     try {
       const keywords = editingRule.edited_keywords.split("|").map(k => k.trim()).filter(Boolean);
       
-      const response = await fetch("http://localhost:8000/api/categories/rules/check-conflicts", {
+      const response = await fetch("http://localhost:8000/api/rules/check-conflicts", {
         method: "POST",
         headers: getApiHeaders(),
         body: JSON.stringify({
@@ -277,7 +277,7 @@ export default function RulesManagerPage() {
     try {
       if (editingRule.isNew) {
         // Create new rule
-        const response = await fetch("http://localhost:8000/api/categories/rules/", {
+        const response = await fetch("http://localhost:8000/api/rules/", {
           method: "POST",
           headers: getApiHeaders(),
           body: JSON.stringify({
@@ -293,7 +293,7 @@ export default function RulesManagerPage() {
         showToast("Rule created successfully");
       } else {
         // Update existing rule
-        const response = await fetch(`http://localhost:8000/api/categories/rules/${editingRule.id}`, {
+        const response = await fetch(`http://localhost:8000/api/rules/${editingRule.id}`, {
           method: "PUT",
           headers: getApiHeaders(),
           body: JSON.stringify({
@@ -321,7 +321,7 @@ export default function RulesManagerPage() {
     if (!confirm("Are you sure you want to delete this rule?")) return;
     
     try {
-      const response = await fetch(`http://localhost:8000/api/categories/rules/${ruleId}`, {
+      const response = await fetch(`http://localhost:8000/api/rules/${ruleId}`, {
         method: "DELETE",
         headers: getApiHeaders(),
       });

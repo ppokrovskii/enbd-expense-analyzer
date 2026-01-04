@@ -52,7 +52,8 @@ export default function ReportsListPage() {
       });
       if (response.ok) {
         const data = await response.json();
-        setPersons(data.persons || []);
+        // API returns array directly, not { persons: [...] }
+        setPersons(Array.isArray(data) ? data : data.persons || []);
       }
     } catch (err) {
       console.error('Failed to fetch persons:', err);
