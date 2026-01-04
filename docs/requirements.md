@@ -47,6 +47,14 @@ Multi-bank web app for analyzing transaction exports with AI categorization, vis
 - ✅ Confidence scoring
 - ✅ Integration with AI chat
 
+**Rule Manager** (unified rule editing UI):
+- ✅ Filter by: category, merchant search, status (uncategorized/has rule)
+- ✅ Entry points: navigation menu, transaction/merchant selection, category click
+- ✅ URL params: `?merchants=`, `?category=`, `?search=`, `?status=`
+- ✅ Inline rule editing (keywords, exclude, category)
+- ✅ Bulk actions: AI Categorize, Assign Category, Delete Rules
+- ✅ Rule tracing: shows which rule matches each merchant
+
 **Category Properties**:
 - ✅ Name, keywords, exclude_keywords, color (64-color palette)
 - ✅ Colors: 8 families × 8 shades = 64 options
@@ -204,6 +212,11 @@ Multi-bank web app for analyzing transaction exports with AI categorization, vis
 #### LLM
 - ✅ `POST /api/llm/generate-rule` - Generate categorization rule
 - ✅ `POST /api/llm/suggest-category` - Suggest category
+
+#### Rule Manager
+- ✅ `GET /api/rules/merchants` - Aggregated merchants with rule match info
+- ✅ `GET /api/rules/find-match` - Find rule matching a merchant
+- ✅ `POST /api/rules/bulk-assign` - Assign category to multiple merchants
 
 #### Unparsed Files
 - ✅ `GET /api/unparsed-files` - List unparsed files

@@ -110,7 +110,7 @@ class RecurringDetectionService:
         )
         
         if person_id:
-            query = query.filter(Transaction.person_id == person_id)
+            query = query.filter(Transaction.person_id == int(person_id))
         
         transactions = query.order_by(Transaction.date).all()
         total_analyzed = len(transactions)
@@ -443,7 +443,7 @@ class RecurringDetectionService:
                 # Create new group
                 group = RecurringGroup(
                     user_id=user_id,
-                    person_id=person_id,
+                    person_id=int(person_id) if person_id else None,
                     pattern_name=detected.pattern_name,
                     merchant=detected.merchant,
                     estimated_amount=detected.estimated_amount,

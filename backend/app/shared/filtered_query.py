@@ -10,6 +10,20 @@ Usage in endpoints:
     def list_categories(ctx: FilteredQueryContext = Depends(get_filtered_context)):
         categories = ctx.query(Category).all()
         return categories
+
+Auth0 Integration:
+    When Auth0 is added, update ONLY the get_filtered_context() function to extract
+    user_id from the JWT token instead of headers. All endpoint code remains unchanged.
+    
+    Example future implementation:
+        async def get_filtered_context(
+            db: Session = Depends(get_db),
+            token: dict = Depends(get_current_user),  # Auth0 JWT validation
+            x_person_id: Optional[str] = Header(default=None, alias='X-Person-Id')
+        ) -> FilteredQueryContext:
+            user_id = token.get("sub")  # Auth0 user ID from JWT
+            person_id = int(x_person_id) if x_person_id else None
+            return FilteredQueryContext(db, user_id, person_id)
 """
 from fastapi import Depends, Header
 from sqlalchemy.orm import Session
@@ -211,6 +225,26 @@ def get_filtered_context(
         @router.get("/items")
         def get_items(ctx: FilteredQueryContext = Depends(get_filtered_context)):
             return ctx.query(Item).all()
+    
+    Auth0 Migration:
+        When adding Auth0 authentication, replace this function with:
+        
+        from fastapi.security import HTTPBearer
+        from app.shared.auth import verify_token  # Your Auth0 verification
+        
+        security = HTTPBearer()
+        
+        async def get_filtered_context(
+            db: Session = Depends(get_db),
+            credentials = Depends(security),
+            x_person_id: Optional[str] = Header(default=None, alias='X-Person-Id')
+        ) -> FilteredQueryContext:
+            token_data = verify_token(credentials.credentials)
+            user_id = token_data["sub"]  # Auth0 user ID
+            person_id = int(x_person_id) if x_person_id else None
+            return FilteredQueryContext(db, user_id, person_id)
+        
+        No changes needed to any router or service code!
     """
     user_id = x_user_id or 'default_user'
     person_id = int(x_person_id) if x_person_id else None
