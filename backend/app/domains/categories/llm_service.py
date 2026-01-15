@@ -218,7 +218,10 @@ Return ONLY the category name."""
             LLMError: If raise_on_error is True and an error occurs
         """
         if not merchants:
+            print(f"[LLM] bulk_suggest_categories called with empty merchant list")
             return []
+        
+        print(f"[LLM] Calling OpenAI to categorize {len(merchants)} merchants...")
         
         function_schema = {
             "name": "categorize_merchants_bulk",
@@ -264,7 +267,10 @@ Return ONLY the category name."""
             if function_call and function_call.arguments:
                 import json
                 result = json.loads(function_call.arguments)
-                return result.get("categorizations", [])
+                categorizations = result.get("categorizations", [])
+                print(f"[LLM] OpenAI returned {len(categorizations)} categorizations")
+                return categorizations
+            print(f"[LLM] OpenAI returned no function call arguments")
             return []
         except Exception as e:
             print(f"Error in bulk suggestion: {e}")

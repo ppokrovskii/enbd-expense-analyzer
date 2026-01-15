@@ -526,9 +526,11 @@ def ai_bulk_suggest(
         merchant_list = [m[0] for m in merchants_query if m[0]]
     
     if not merchant_list:
+        print(f"[AI-Suggest] No merchants to process")
         return []
     
     merchant_list = merchant_list[:request.limit]
+    print(f"[AI-Suggest] Processing {len(merchant_list)} merchants from request")
     
     try:
         ai_suggestions = llm_service.bulk_suggest_categories(merchant_list, raise_on_error=True)
