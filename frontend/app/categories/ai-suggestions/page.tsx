@@ -186,12 +186,14 @@ export default function AICategorizationSuggestionsPage() {
       const response = await fetch(`${API_URL}/api/categories/`, {
         method: "POST",
         headers: getApiHeaders(),
-        body: JSON.stringify({ name: categoryName, keywords: [] }),
+        body: JSON.stringify({ name: categoryName }),
       });
       
       if (!response.ok) throw new Error("Failed to create category");
       
-      const newCategory = await response.json();
+      const result = await response.json();
+      // API returns { category: {...}, transactions_affected: N }
+      const newCategory = result.category;
       
       // Update allCategories state so the new category appears in ALL dropdowns
       setAllCategories(prev => [...prev, newCategory]);

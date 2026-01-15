@@ -486,11 +486,13 @@ export default function RulesManagerPage() {
         const catResponse = await fetch(`${API_URL}/api/categories/`, {
           method: "POST",
           headers: getApiHeaders(),
-          body: JSON.stringify({ name: suggestion.edited_category, keywords: [] }),
+          body: JSON.stringify({ name: suggestion.edited_category }),
         });
         
         if (!catResponse.ok) throw new Error("Failed to create category");
-        const newCat = await catResponse.json();
+        const catResult = await catResponse.json();
+        // API returns { category: {...}, transactions_affected: N }
+        const newCat = catResult.category;
         categoryId = newCat.id;
         
         // Update categories list
