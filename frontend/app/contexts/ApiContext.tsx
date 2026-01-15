@@ -2,8 +2,7 @@
 
 import React, { createContext, useContext, useMemo } from 'react';
 import { usePerson } from '../hooks/usePerson';
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+import { API_URL } from '../utils/api';
 
 interface ApiContextValue {
   apiUrl: string;

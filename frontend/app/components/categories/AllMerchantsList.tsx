@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Modal from "./Modal";
 import { Category } from "../../categories/page";
+import { API_URL } from "../../utils/api";
 
 interface MerchantGroup {
   merchant: string;
@@ -41,7 +42,7 @@ export default function AllMerchantsList({
     setLoading(true);
     try {
       const response = await fetch(
-        `http://localhost:8000/api/categories/all-merchants?days=${statsWindow}`
+        `${API_URL}/api/categories/all-merchants?days=${statsWindow}`
       );
       if (!response.ok) throw new Error("Failed to fetch merchants");
       const data = await response.json();
@@ -72,7 +73,7 @@ export default function AllMerchantsList({
 
     setApplying(true);
     try {
-      const response = await fetch("http://localhost:8000/api/categories/apply-to-merchant", {
+      const response = await fetch(`${API_URL}/api/categories/apply-to-merchant`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import SkeletonLoader from "./ui/SkeletonLoader";
 import EmptyState from "./ui/EmptyState";
-import { getApiHeaders } from "../utils/api";
+import { getApiHeaders, API_URL } from "../utils/api";
 
 interface MerchantSummary {
   merchant: string;
@@ -66,7 +66,7 @@ export default function MerchantList({
   useEffect(() => {
     const fetchCategoryColors = async () => {
       try {
-        const response = await fetch('http://localhost:8000/api/categories/', {
+        const response = await fetch(`${API_URL}/api/categories/`, {
           headers: getApiHeaders(),
         });
         if (response.ok) {
@@ -135,7 +135,7 @@ export default function MerchantList({
       appliedFilters.accounts.forEach(acc => params.append("accounts", acc));
 
       const response = await fetch(
-        `http://localhost:8000/api/merchants?${params.toString()}`,
+        `${API_URL}/api/merchants?${params.toString()}`,
         { headers: getApiHeaders() }
       );
 

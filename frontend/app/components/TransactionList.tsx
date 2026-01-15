@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import SkeletonLoader from "./ui/SkeletonLoader";
 import EmptyState from "./ui/EmptyState";
-import { getApiHeaders } from "../utils/api";
+import { getApiHeaders, API_URL } from "../utils/api";
 
 interface Transaction {
   id: number;
@@ -67,7 +67,7 @@ export default function TransactionList({
   useEffect(() => {
     const fetchCategoryColors = async () => {
       try {
-        const response = await fetch('http://localhost:8000/api/categories/', {
+        const response = await fetch(`${API_URL}/api/categories/`, {
           headers: getApiHeaders(),
         });
         if (response.ok) {
@@ -208,7 +208,7 @@ export default function TransactionList({
       appliedFilters.accounts.forEach(acc => params.append("accounts", acc));
 
       const response = await fetch(
-        `http://localhost:8000/api/transactions?${params.toString()}`,
+        `${API_URL}/api/transactions?${params.toString()}`,
         { headers: getApiHeaders() }
       );
 

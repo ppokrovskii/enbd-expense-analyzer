@@ -10,6 +10,7 @@ import MetricCard from "../components/ui/MetricCard";
 import SkeletonLoader from "../components/ui/SkeletonLoader";
 import SegmentedControl from "../components/ui/SegmentedControl";
 import { useStats } from "../hooks/useStats";
+import { API_URL } from "../utils/api";
 
 interface FilterValues {
   startDate: string;
@@ -107,7 +108,7 @@ export default function TransactionsPage() {
   
   // Fetch available categories (including transfer categories)
   useEffect(() => {
-    fetch("http://localhost:8000/api/filters/options")
+    fetch(`${API_URL}/api/filters/options`)
       .then(res => res.json())
       .then(data => {
         const cats = data.categories || [];

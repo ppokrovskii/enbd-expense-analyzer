@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import ChatInput from '@/app/components/chat/ChatInput';
+import { API_URL } from '@/app/utils/api';
 
 interface ChatSession {
   id: string;
@@ -26,7 +27,7 @@ export default function ChatPage() {
 
   const loadSessions = async () => {
     try {
-      const response = await fetch('http://localhost:8000/api/chat/sessions', {
+      const response = await fetch(`${API_URL}/api/chat/sessions`, {
         headers: {
           'X-User-Id': 'default_user',
         },
@@ -60,7 +61,7 @@ export default function ChatPage() {
     
     try {
       // Create a new chat session
-      const sessionResponse = await fetch('http://localhost:8000/api/chat/sessions', {
+      const sessionResponse = await fetch(`${API_URL}/api/chat/sessions`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -75,7 +76,7 @@ export default function ChatPage() {
         // If context filters provided, attach them before sending message
         if (contextFilters) {
           try {
-            await fetch(`http://localhost:8000/api/chat/sessions/${newSession.id}/context`, {
+            await fetch(`${API_URL}/api/chat/sessions/${newSession.id}/context`, {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
@@ -123,7 +124,7 @@ export default function ChatPage() {
     if (!confirm('Delete this chat session?')) return;
 
     try {
-      const response = await fetch(`http://localhost:8000/api/chat/sessions/${sessionId}`, {
+      const response = await fetch(`${API_URL}/api/chat/sessions/${sessionId}`, {
         method: 'DELETE',
         headers: { 'X-User-Id': 'default_user' },
       });

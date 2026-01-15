@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { getApiHeaders } from "../../utils/api";
+import { getApiHeaders, API_URL } from "../../utils/api";
 
 interface SectionFilters {
   start_date?: string;
@@ -39,7 +39,7 @@ export default function RecurringSection({ filters, content, onContentChange }: 
   const detectRecurring = async () => {
     setDetecting(true);
     try {
-      const response = await fetch('http://localhost:8000/api/recurring/detect', {
+      const response = await fetch(`${API_URL}/api/recurring/detect`, {
         method: 'POST',
         headers: getApiHeaders(),
         body: JSON.stringify({

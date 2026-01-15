@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { getApiHeaders } from "../../utils/api";
+import { getApiHeaders, API_URL } from "../../utils/api";
 import SkeletonLoader from "../../components/ui/SkeletonLoader";
 import FilterPopup from "../../components/report/FilterPopup";
 import SummarySection from "../../components/report/SummarySection";
@@ -85,7 +85,7 @@ export default function ReportEditorPage() {
     setError(null);
     try {
       const response = await fetch(
-        `http://localhost:8000/api/reports/${reportId}`,
+        `${API_URL}/api/reports/${reportId}`,
         { headers: getApiHeaders() }
       );
       
@@ -110,7 +110,7 @@ export default function ReportEditorPage() {
   const fetchSectionTypes = async () => {
     try {
       const response = await fetch(
-        'http://localhost:8000/api/reports/section-types',
+        `${API_URL}/api/reports/section-types`,
         { headers: getApiHeaders() }
       );
       if (response.ok) {
@@ -128,7 +128,7 @@ export default function ReportEditorPage() {
     setSaving(true);
     try {
       const response = await fetch(
-        `http://localhost:8000/api/reports/${reportId}`,
+        `${API_URL}/api/reports/${reportId}`,
         {
           method: 'PUT',
           headers: getApiHeaders(),
@@ -154,7 +154,7 @@ export default function ReportEditorPage() {
     setSaving(true);
     try {
       const response = await fetch(
-        `http://localhost:8000/api/reports/${reportId}/sections/${sectionId}`,
+        `${API_URL}/api/reports/${reportId}/sections/${sectionId}`,
         {
           method: 'PUT',
           headers: getApiHeaders(),
@@ -180,7 +180,7 @@ export default function ReportEditorPage() {
     setShowAddSection(false);
     try {
       const response = await fetch(
-        `http://localhost:8000/api/reports/${reportId}/sections`,
+        `${API_URL}/api/reports/${reportId}/sections`,
         {
           method: 'POST',
           headers: getApiHeaders(),
@@ -204,7 +204,7 @@ export default function ReportEditorPage() {
     setSaving(true);
     try {
       const response = await fetch(
-        `http://localhost:8000/api/reports/${reportId}/sections/${sectionId}`,
+        `${API_URL}/api/reports/${reportId}/sections/${sectionId}`,
         {
           method: 'DELETE',
           headers: getApiHeaders(),
@@ -225,7 +225,7 @@ export default function ReportEditorPage() {
     setSaving(true);
     try {
       const response = await fetch(
-        `http://localhost:8000/api/reports/${reportId}/sections/${sectionId}/move`,
+        `${API_URL}/api/reports/${reportId}/sections/${sectionId}/move`,
         {
           method: 'PUT',
           headers: getApiHeaders(),
@@ -248,7 +248,7 @@ export default function ReportEditorPage() {
     setSaving(true);
     try {
       const response = await fetch(
-        `http://localhost:8000/api/reports/${reportId}/sections/${sectionId}`,
+        `${API_URL}/api/reports/${reportId}/sections/${sectionId}`,
         {
           method: 'PUT',
           headers: getApiHeaders(),
@@ -282,7 +282,7 @@ export default function ReportEditorPage() {
     // Save to API in background
     try {
       const response = await fetch(
-        `http://localhost:8000/api/reports/${reportId}/sections/${sectionId}`,
+        `${API_URL}/api/reports/${reportId}/sections/${sectionId}`,
         {
           method: 'PUT',
           headers: getApiHeaders(),

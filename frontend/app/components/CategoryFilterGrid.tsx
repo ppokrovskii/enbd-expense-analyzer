@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { getApiHeaders } from "../utils/api";
+import { getApiHeaders, API_URL } from "../utils/api";
 
 interface CategoryTotal {
   category: string;
@@ -51,7 +51,7 @@ export default function CategoryFilterGrid({
         if (endDate) params.append("end_date", endDate);
 
         const response = await fetch(
-          `http://localhost:8000/api/chart/weekly${params.toString() ? `?${params.toString()}` : ""}`,
+          `${API_URL}/api/chart/weekly${params.toString() ? `?${params.toString()}` : ""}`,
           { headers: getApiHeaders() }
         );
 

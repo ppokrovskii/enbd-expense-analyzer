@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Category } from "../../categories/page";
 import Modal from "./Modal";
+import { API_URL } from "../../utils/api";
 
 interface CategoryFiltersProps {
   categories: Category[];
@@ -34,7 +35,7 @@ export default function CategoryFilters({
     setCreating(true);
     setError(null);
     try {
-      const response = await fetch("http://localhost:8000/api/categories/", {
+      const response = await fetch(`${API_URL}/api/categories/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -74,7 +75,7 @@ export default function CategoryFilters({
     try {
       // Delete each selected category
       const deletePromises = selectedCategoryIds.map(categoryId =>
-        fetch(`http://localhost:8000/api/categories/${categoryId}`, {
+        fetch(`${API_URL}/api/categories/${categoryId}`, {
           method: "DELETE",
         })
       );

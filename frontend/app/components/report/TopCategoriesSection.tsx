@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { getApiHeaders } from "../../utils/api";
+import { getApiHeaders, API_URL } from "../../utils/api";
 import SkeletonLoader from "../ui/SkeletonLoader";
 
 interface SectionFilters {
@@ -46,7 +46,7 @@ export default function TopCategoriesSection({ filters, content, onContentChange
       const periodDays = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
 
       const response = await fetch(
-        `http://localhost:8000/api/insights/generate?period_days=${periodDays}`,
+        `${API_URL}/api/insights/generate?period_days=${periodDays}`,
         { headers: getApiHeaders() }
       );
 

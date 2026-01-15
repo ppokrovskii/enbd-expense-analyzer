@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import { getApiHeaders } from "../utils/api";
+import { getApiHeaders, API_URL } from "../utils/api";
 
 interface FileUploadProps {
   onUploadComplete: (result: any) => void;
@@ -62,7 +62,7 @@ export default function FileUpload({ onUploadComplete, onUploadError }: FileUplo
       const headers = getApiHeaders();
       delete headers['Content-Type'];
       
-      const response = await fetch('http://localhost:8000/api/upload', {
+      const response = await fetch(`${API_URL}/api/upload`, {
         method: 'POST',
         headers,
         body: formData,

@@ -6,7 +6,7 @@ import RulesFilter from "../components/categories/RulesFilter";
 import MerchantsGrid from "../components/categories/MerchantsGrid";
 import SparkleIcon from "../components/ui/SparkleIcon";
 import CategoryFilterGrid from "../components/CategoryFilterGrid";
-import { API_BASE_URL } from "../constants/api";
+import { API_URL } from "../utils/api";
 
 export interface Category {
   id: number;
@@ -77,7 +77,7 @@ export default function CategoriesPage() {
   const fetchCategories = async () => {
     setLoading(true);
     try {
-      const response = await fetch("http://localhost:8000/api/categories");
+      const response = await fetch(`${API_URL}/api/categories`);
       if (!response.ok) throw new Error("Failed to fetch categories");
       const data = await response.json();
       setCategories(data);
@@ -103,7 +103,7 @@ export default function CategoriesPage() {
     setCreating(true);
     setModalError(null);
     try {
-      const response = await fetch("http://localhost:8000/api/categories/", {
+      const response = await fetch(`${API_URL}/api/categories/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -144,7 +144,7 @@ export default function CategoriesPage() {
     try {
       // Delete each selected category
       const deletePromises = selectedCategoryIds.map(categoryId =>
-        fetch(`http://localhost:8000/api/categories/${categoryId}`, {
+        fetch(`${API_URL}/api/categories/${categoryId}`, {
           method: "DELETE",
         })
       );

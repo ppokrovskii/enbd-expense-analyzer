@@ -1,10 +1,16 @@
 """Service for LLM-powered categorization using OpenAI."""
 import os
-from typing import List, Optional
+from typing import List, Optional, Tuple
 from dotenv import load_dotenv
 from sqlalchemy.orm import Session
 from .models import LLMCache, Category
 from app.domains.transactions.models import Transaction
+from app.shared.exceptions import (
+    LLMError,
+    LLMQuotaExceededError,
+    LLMRateLimitError,
+    parse_openai_error
+)
 
 load_dotenv()
 
@@ -117,8 +123,19 @@ class LLMCategorizationService:
 
 Return ONLY the category name."""
     
-    def categorize_with_llm(self, merchant: str) -> str:
-        """Categorize a single merchant using LLM."""
+    def categorize_with_llm(self, merchant: str, raise_on_error: bool = False) -> str:
+        """Categorize a single merchant using LLM.
+        
+        Args:
+            merchant: The merchant name to categorize
+            raise_on_error: If True, raises LLMError on failure instead of returning "Other"
+        
+        Returns:
+            Category name string
+            
+        Raises:
+            LLMError: If raise_on_error is True and an error occurs
+        """
         try:
             response = self.client.chat.completions.create(
                 model=self.model,
@@ -133,6 +150,8 @@ Return ONLY the category name."""
             return category if category else "Other"
         except Exception as e:
             print(f"Error calling LLM for merchant '{merchant}': {e}")
+            if raise_on_error:
+                raise parse_openai_error(e) from e
             return "Other"
     
     def get_cached_category(self, merchant: str, db: Session) -> Optional[str]:
@@ -185,8 +204,19 @@ Return ONLY the category name."""
         db.commit()
         return stats
 
-    def bulk_suggest_categories(self, merchants: List[str]) -> List[dict]:
-        """Get AI suggestions for multiple merchants using function calling."""
+    def bulk_suggest_categories(self, merchants: List[str], raise_on_error: bool = True) -> List[dict]:
+        """Get AI suggestions for multiple merchants using function calling.
+        
+        Args:
+            merchants: List of merchant names to categorize
+            raise_on_error: If True, raises LLMError on failure (default True for bulk operations)
+        
+        Returns:
+            List of categorization suggestions
+            
+        Raises:
+            LLMError: If raise_on_error is True and an error occurs
+        """
         if not merchants:
             return []
         
@@ -238,10 +268,13 @@ Return ONLY the category name."""
             return []
         except Exception as e:
             print(f"Error in bulk suggestion: {e}")
+            if raise_on_error:
+                raise parse_openai_error(e) from e
+            # Fallback: try individual categorization (may also fail)
             return [
                 {
                     "merchant": merchant,
-                    "category": self.categorize_with_llm(merchant),
+                    "category": self.categorize_with_llm(merchant, raise_on_error=False),
                     "pattern": merchant.split()[0] if merchant else merchant,
                     "pattern_type": "keyword",
                     "is_new_category": False

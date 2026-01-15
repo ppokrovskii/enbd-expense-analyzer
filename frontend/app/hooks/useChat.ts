@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react';
+import { API_URL } from '../utils/api';
 
 interface Message {
   id: string;
@@ -38,7 +39,7 @@ export function useChat(sessionId: string) {
     setLoading(true);
     try {
       const response = await fetch(
-        `http://localhost:8000/api/chat/sessions/${sessionId}`,
+        `${API_URL}/api/chat/sessions/${sessionId}`,
         {
           headers: {
             'X-User-Id': 'default_user',
@@ -76,7 +77,7 @@ export function useChat(sessionId: string) {
       setSending(true);
       try {
         const response = await fetch(
-          `http://localhost:8000/api/chat/sessions/${sessionId}/messages`,
+          `${API_URL}/api/chat/sessions/${sessionId}/messages`,
           {
             method: 'POST',
             headers: {
@@ -143,7 +144,7 @@ export function useChat(sessionId: string) {
 
       try {
         const response = await fetch(
-          `http://localhost:8000/api/chat/sessions/${sessionId}/context`,
+          `${API_URL}/api/chat/sessions/${sessionId}/context`,
           {
             method: 'POST',
             headers: {
@@ -172,7 +173,7 @@ export function useChat(sessionId: string) {
 
     try {
       const response = await fetch(
-        `http://localhost:8000/api/chat/sessions/${sessionId}/context`,
+        `${API_URL}/api/chat/sessions/${sessionId}/context`,
         {
           method: 'DELETE',
           headers: {

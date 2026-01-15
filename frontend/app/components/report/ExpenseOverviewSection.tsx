@@ -3,6 +3,7 @@
 import { useMemo, useCallback, useState, useEffect, useRef } from "react";
 import SpendingChart from "../SpendingChart";
 import { usePerson } from "../../hooks/usePerson";
+import { API_URL } from "../../utils/api";
 
 interface SectionFilters {
   start_date?: string;
@@ -112,7 +113,7 @@ export default function ExpenseOverviewSection({ filters, content, onContentChan
         params.append('person_id', activePerson.id.toString());
       }
 
-      const response = await fetch(`/api/insights/generate?${params}`, {
+      const response = await fetch(`${API_URL}/api/insights/generate?${params}`, {
         headers: { "X-User-Id": "default_user" },
       });
 

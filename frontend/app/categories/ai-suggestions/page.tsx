@@ -13,7 +13,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import SparkleIcon from "../../components/ui/SparkleIcon";
-import { getApiHeaders } from "../../utils/api";
+import { getApiHeaders, API_URL } from "../../utils/api";
 
 interface AISuggestion {
   merchant: string;
@@ -86,7 +86,7 @@ export default function AICategorizationSuggestionsPage() {
     
     const init = async () => {
       try {
-        const response = await fetch("http://localhost:8000/api/categories/", {
+        const response = await fetch(`${API_URL}/api/categories/`, {
           headers: getApiHeaders(),
         });
         if (!response.ok) throw new Error("Failed to fetch categories");
@@ -120,7 +120,7 @@ export default function AICategorizationSuggestionsPage() {
     
     try {
       const response = await fetch(
-        "http://localhost:8000/api/categories/ai-bulk-suggest",
+        `${API_URL}/api/categories/ai-bulk-suggest`,
         {
           method: "POST",
           headers: getApiHeaders(),
@@ -183,7 +183,7 @@ export default function AICategorizationSuggestionsPage() {
     setError(null);
     
     try {
-      const response = await fetch("http://localhost:8000/api/categories/", {
+      const response = await fetch(`${API_URL}/api/categories/`, {
         method: "POST",
         headers: getApiHeaders(),
         body: JSON.stringify({ name: categoryName, keywords: [] }),
@@ -245,7 +245,7 @@ export default function AICategorizationSuggestionsPage() {
       };
 
       const response = await fetch(
-        "http://localhost:8000/api/categories/ai-bulk-apply",
+        `${API_URL}/api/categories/ai-bulk-apply`,
         {
           method: "POST",
           headers: getApiHeaders(),
@@ -292,7 +292,7 @@ export default function AICategorizationSuggestionsPage() {
       };
 
       const response = await fetch(
-        "http://localhost:8000/api/categories/ai-bulk-apply",
+        `${API_URL}/api/categories/ai-bulk-apply`,
         {
           method: "POST",
           headers: getApiHeaders(),

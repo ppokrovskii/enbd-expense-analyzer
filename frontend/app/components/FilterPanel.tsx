@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import FilterChip from "./ui/FilterChip";
 import FilterModal from "./FilterModal";
+import { API_URL } from "../utils/api";
 
 interface FilterOptions {
   categories: string[];
@@ -32,7 +33,7 @@ export default function FilterPanel({ onFilterChange, onReset, currentFilters }:
 
   // Fetch filter options on mount
   useEffect(() => {
-    fetch("http://localhost:8000/api/filters/options")
+    fetch(`${API_URL}/api/filters/options`)
       .then(res => res.json())
       .then(data => setFilterOptions(data))
       .catch(err => console.error("Failed to fetch filter options:", err));

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { getApiHeaders } from "../../utils/api";
+import { getApiHeaders, API_URL } from "../../utils/api";
 
 interface SectionFilters {
   start_date?: string;
@@ -36,7 +36,7 @@ export default function TrendsSection({ filters, content, onContentChange }: Tre
       const periodDays = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
 
       const response = await fetch(
-        `http://localhost:8000/api/insights/spending-trends?period_days=${periodDays}`,
+        `${API_URL}/api/insights/spending-trends?period_days=${periodDays}`,
         { headers: getApiHeaders() }
       );
 

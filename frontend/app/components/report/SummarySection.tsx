@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { getApiHeaders } from "../../utils/api";
+import { getApiHeaders, API_URL } from "../../utils/api";
 import MetricCard from "../ui/MetricCard";
 import SkeletonLoader from "../ui/SkeletonLoader";
 
@@ -53,7 +53,7 @@ export default function SummarySection({ filters, content, onContentChange }: Su
       params.set('end_date', filters.end_date);
 
       const response = await fetch(
-        `http://localhost:8000/api/stats/summary?${params.toString()}`,
+        `${API_URL}/api/stats/summary?${params.toString()}`,
         { headers: getApiHeaders() }
       );
 
@@ -73,7 +73,7 @@ export default function SummarySection({ filters, content, onContentChange }: Su
     
     setGenerating(true);
     try {
-      const response = await fetch('http://localhost:8000/api/chat/quick', {
+      const response = await fetch(`${API_URL}/api/chat/quick`, {
         method: 'POST',
         headers: getApiHeaders(),
         body: JSON.stringify({

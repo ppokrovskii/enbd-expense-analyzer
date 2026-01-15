@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { API_URL } from '@/app/utils/api';
 
 interface ContextModalProps {
   sessionId: string;
@@ -71,7 +72,7 @@ export default function ContextModal({
 
   const loadFilters = async () => {
     try {
-      const response = await fetch('http://localhost:8000/api/data/filters', {
+      const response = await fetch(`${API_URL}/api/data/filters`, {
         headers: {
           'X-User-Id': 'default_user',
         },
@@ -114,7 +115,7 @@ export default function ContextModal({
     setEstimating(true);
     try {
       const response = await fetch(
-        'http://localhost:8000/api/chat/sessions/context/estimate',
+        `${API_URL}/api/chat/sessions/context/estimate`,
         {
           method: 'POST',
           headers: {
@@ -148,7 +149,7 @@ export default function ContextModal({
     setLoading(true);
     try {
       const response = await fetch(
-        `http://localhost:8000/api/chat/sessions/${sessionId}/context`,
+        `${API_URL}/api/chat/sessions/${sessionId}/context`,
         {
           method: 'POST',
           headers: {

@@ -7,6 +7,7 @@ import ChatWindow from '@/app/components/chat/ChatWindow';
 import ChatInput from '@/app/components/chat/ChatInput';
 import ContextModal from '@/app/components/chat/ContextModal';
 import { useChat } from '@/app/hooks/useChat';
+import { API_URL } from '@/app/utils/api';
 
 export default function ChatSessionPage() {
   const params = useParams();
@@ -55,7 +56,7 @@ export default function ChatSessionPage() {
 
   const loadAllSessions = async () => {
     try {
-      const response = await fetch('http://localhost:8000/api/chat/sessions', {
+      const response = await fetch(`${API_URL}/api/chat/sessions`, {
         headers: { 'X-User-Id': 'default_user' }
       });
       if (response.ok) {
@@ -83,7 +84,7 @@ export default function ChatSessionPage() {
     if (!confirm('Delete this chat session?')) return;
 
     try {
-      const response = await fetch(`http://localhost:8000/api/chat/sessions/${sessionId}`, {
+      const response = await fetch(`${API_URL}/api/chat/sessions/${sessionId}`, {
         method: 'DELETE',
         headers: { 'X-User-Id': 'default_user' },
       });
@@ -109,7 +110,7 @@ export default function ChatSessionPage() {
     if (!confirm('Delete this chat session?')) return;
 
     try {
-      const response = await fetch(`http://localhost:8000/api/chat/sessions/${sessionIdToDelete}`, {
+      const response = await fetch(`${API_URL}/api/chat/sessions/${sessionIdToDelete}`, {
         method: 'DELETE',
         headers: { 'X-User-Id': 'default_user' },
       });

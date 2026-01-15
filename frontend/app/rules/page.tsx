@@ -14,7 +14,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { getApiHeaders } from "../utils/api";
+import { getApiHeaders, API_URL } from "../utils/api";
 
 // Types
 interface Rule {
@@ -171,7 +171,7 @@ export default function RulesManagerPage() {
 
   const loadCategories = async () => {
     try {
-      const response = await fetch("http://localhost:8000/api/categories/", {
+      const response = await fetch(`${API_URL}/api/categories/`, {
         headers: getApiHeaders(),
       });
       if (!response.ok) {
@@ -193,7 +193,7 @@ export default function RulesManagerPage() {
     setError(null);
     
     try {
-      let url = "http://localhost:8000/api/rules/?limit=100";
+      let url = `${API_URL}/api/rules/?limit=100`;
       if (categoryFilter) url += `&category_id=${categoryFilter}`;
       if (searchQuery) url += `&search=${encodeURIComponent(searchQuery)}`;
       
@@ -220,7 +220,7 @@ export default function RulesManagerPage() {
     
     try {
       const response = await fetch(
-        "http://localhost:8000/api/categories/ai-bulk-suggest",
+        `${API_URL}/api/categories/ai-bulk-suggest`,
         {
           method: "POST",
           headers: getApiHeaders(),
@@ -233,7 +233,25 @@ export default function RulesManagerPage() {
         }
       );
 
-      if (!response.ok) throw new Error("Failed to fetch AI suggestions");
+      if (!response.ok) {
+        // Try to parse error response for user-friendly message
+        try {
+          const errorData = await response.json();
+          const detail = errorData.detail;
+          if (detail && typeof detail === 'object' && detail.user_message) {
+            throw new Error(detail.user_message);
+          } else if (detail && typeof detail === 'string') {
+            throw new Error(detail);
+          }
+        } catch (parseError) {
+          // If parsing fails, use generic message
+          if (parseError instanceof Error && parseError.message !== "Failed to fetch AI suggestions") {
+            throw parseError;
+          }
+        }
+        throw new Error("Failed to fetch AI suggestions. Please try again later.");
+      }
+      
       const data = await response.json();
       
       const mapped: PendingSuggestion[] = data.map((s: AISuggestion, idx: number) => {
@@ -293,7 +311,7 @@ export default function RulesManagerPage() {
       const keywords = editingRule.edited_keywords.split("|").map(k => k.trim()).filter(Boolean);
       const excludeKeywords = editingRule.edited_exclude_keywords.split("|").map(k => k.trim()).filter(Boolean);
       
-      const response = await fetch("http://localhost:8000/api/rules/test", {
+      const response = await fetch(`${API_URL}/api/rules/test`, {
         method: "POST",
         headers: getApiHeaders(),
         body: JSON.stringify({
@@ -321,7 +339,7 @@ export default function RulesManagerPage() {
     try {
       const keywords = editingRule.edited_keywords.split("|").map(k => k.trim()).filter(Boolean);
       
-      const response = await fetch("http://localhost:8000/api/rules/check-conflicts", {
+      const response = await fetch(`${API_URL}/api/rules/check-conflicts`, {
         method: "POST",
         headers: getApiHeaders(),
         body: JSON.stringify({
@@ -402,7 +420,7 @@ export default function RulesManagerPage() {
     
     try {
       if (editingRule.isNew) {
-        const response = await fetch("http://localhost:8000/api/rules/", {
+        const response = await fetch(`${API_URL}/api/rules/`, {
           method: "POST",
           headers: getApiHeaders(),
           body: JSON.stringify({
@@ -416,7 +434,7 @@ export default function RulesManagerPage() {
         if (!response.ok) throw new Error("Failed to create rule");
         showToast("Rule created successfully");
       } else {
-        const response = await fetch(`http://localhost:8000/api/rules/${editingRule.id}`, {
+        const response = await fetch(`${API_URL}/api/rules/${editingRule.id}`, {
           method: "PUT",
           headers: getApiHeaders(),
           body: JSON.stringify({
@@ -443,7 +461,7 @@ export default function RulesManagerPage() {
     if (!confirm("Are you sure you want to delete this rule?")) return;
     
     try {
-      const response = await fetch(`http://localhost:8000/api/rules/${ruleId}`, {
+      const response = await fetch(`${API_URL}/api/rules/${ruleId}`, {
         method: "DELETE",
         headers: getApiHeaders(),
       });
@@ -465,7 +483,7 @@ export default function RulesManagerPage() {
       
       if (!categoryId) {
         // Create the category first
-        const catResponse = await fetch("http://localhost:8000/api/categories/", {
+        const catResponse = await fetch(`${API_URL}/api/categories/`, {
           method: "POST",
           headers: getApiHeaders(),
           body: JSON.stringify({ name: suggestion.edited_category, keywords: [] }),
@@ -482,7 +500,7 @@ export default function RulesManagerPage() {
       // Create the rule
       const keywords = suggestion.edited_pattern.split("|").map(k => k.trim()).filter(Boolean);
       
-      const response = await fetch("http://localhost:8000/api/rules/", {
+      const response = await fetch(`${API_URL}/api/rules/`, {
         method: "POST",
         headers: getApiHeaders(),
         body: JSON.stringify({
@@ -709,11 +727,46 @@ export default function RulesManagerPage() {
       {/* Content */}
       <div className="container mx-auto px-4 sm:px-6 py-4 sm:py-6 max-w-5xl">
         {error && (
-          <div className="mb-4 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl text-red-800 dark:text-red-200 text-sm flex items-start gap-3">
-            <svg className="w-5 h-5 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            <span>{error}</span>
+          <div className="mb-6 p-5 bg-gradient-to-r from-red-50 to-orange-50 dark:from-red-900/30 dark:to-orange-900/20 border border-red-200 dark:border-red-800 rounded-xl shadow-sm">
+            <div className="flex items-start gap-4">
+              <div className="flex-shrink-0 w-10 h-10 rounded-full bg-red-100 dark:bg-red-900/50 flex items-center justify-center">
+                <svg className="w-5 h-5 text-red-600 dark:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+              </div>
+              <div className="flex-1">
+                <h3 className="text-base font-semibold text-red-800 dark:text-red-200 mb-1">
+                  {error.includes('quota') || error.includes('billing') 
+                    ? 'AI Service Temporarily Unavailable'
+                    : error.includes('rate') || error.includes('demand')
+                    ? 'High Demand'
+                    : 'Error'}
+                </h3>
+                <p className="text-sm text-red-700 dark:text-red-300">{error}</p>
+                {isAIMode && (
+                  <div className="mt-4 flex gap-3">
+                    <button
+                      onClick={() => {
+                        setError(null);
+                        fetchAISuggestions();
+                      }}
+                      className="px-4 py-2 text-sm font-medium bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
+                    >
+                      Try Again
+                    </button>
+                    <button
+                      onClick={() => {
+                        setError(null);
+                        router.push(returnUrl || '/transactions');
+                      }}
+                      className="px-4 py-2 text-sm font-medium bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-700 rounded-lg transition-colors"
+                    >
+                      Go Back
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         )}
 

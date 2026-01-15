@@ -3,7 +3,9 @@
  * Handles user and person identification headers automatically.
  */
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+export const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+export const API_BASE_URL = `${API_URL}/api`;
+export const WS_BASE_URL = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8000';
 
 // Store active person_id globally (updated by PersonSwitcher)
 let activePersonId: number | null = null;

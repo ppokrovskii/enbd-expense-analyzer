@@ -1,7 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { setActivePersonId } from '../utils/api';
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+import { setActivePersonId, API_URL } from '../utils/api';
 
 export interface Person {
   id: number;

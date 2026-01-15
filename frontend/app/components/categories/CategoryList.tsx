@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { Category, CategoryDetailedStats } from "../../categories/page";
 import SparkleIcon from "../ui/SparkleIcon";
 import AIBulkModal from "./AIBulkModal";
+import { API_URL } from "../../utils/api";
 
 interface CategoryListProps {
   categories: Category[];
@@ -42,7 +43,7 @@ export default function CategoryList({
     setLoading((prev) => new Set(prev).add(categoryId));
     try {
       const response = await fetch(
-        `http://localhost:8000/api/categories/${categoryId}/detailed-stats?days=${statsWindow}`
+        `${API_URL}/api/categories/${categoryId}/detailed-stats?days=${statsWindow}`
       );
       if (!response.ok) throw new Error("Failed to fetch stats");
       const stats = await response.json();
@@ -82,7 +83,7 @@ export default function CategoryList({
         .map((k) => k.trim())
         .filter((k) => k.length > 0);
 
-      const response = await fetch("http://localhost:8000/api/categories/", {
+      const response = await fetch(`${API_URL}/api/categories/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

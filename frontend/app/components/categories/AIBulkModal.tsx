@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import SparkleIcon from "../ui/SparkleIcon";
 import { Category } from "../../categories/page";
+import { API_URL } from "../../utils/api";
 
 interface AISuggestion {
   merchant: string;
@@ -76,7 +77,7 @@ export default function AIBulkModal({
       }
 
       const response = await fetch(
-        `http://localhost:8000/api/categories/ai-bulk-suggest?${params}`
+        `${API_URL}/api/categories/ai-bulk-suggest?${params}`
       );
 
       if (!response.ok) throw new Error("Failed to fetch AI suggestions");
@@ -116,7 +117,7 @@ export default function AIBulkModal({
       };
 
       const response = await fetch(
-        "http://localhost:8000/api/categories/ai-bulk-apply",
+        `${API_URL}/api/categories/ai-bulk-apply`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -153,7 +154,7 @@ export default function AIBulkModal({
       };
 
       const response = await fetch(
-        "http://localhost:8000/api/categories/ai-bulk-apply",
+        `${API_URL}/api/categories/ai-bulk-apply`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },

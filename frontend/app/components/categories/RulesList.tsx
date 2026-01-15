@@ -7,6 +7,7 @@ import MerchantsList from "./MerchantsList";
 import CategoryMerchantsList from "./CategoryMerchantsList";
 import Modal from "./Modal";
 import AIBulkModal from "./AIBulkModal";
+import { API_URL } from "../../utils/api";
 
 interface RulesListProps {
   category: Category;
@@ -41,7 +42,7 @@ export default function RulesList({
     setMoving(true);
     try {
       const response = await fetch(
-        `http://localhost:8000/api/categories/${category.id}/rules/${selectedRuleIndexForMove}/move?target_category_id=${targetCategoryId}`,
+        `${API_URL}/api/categories/${category.id}/rules/${selectedRuleIndexForMove}/move?target_category_id=${targetCategoryId}`,
         { method: "PUT" }
       );
 

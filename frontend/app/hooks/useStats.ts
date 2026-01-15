@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { getApiHeaders } from "../utils/api";
+import { getApiHeaders, API_URL } from "../utils/api";
 
 interface SummaryStats {
   total_income: number;
@@ -41,7 +41,7 @@ export function useStats(options: UseStatsOptions = {}) {
       if (options.endDate) params.append("end_date", options.endDate);
 
       const response = await fetch(
-        `http://localhost:8000/api/stats/summary${params.toString() ? `?${params.toString()}` : ""}`,
+        `${API_URL}/api/stats/summary${params.toString() ? `?${params.toString()}` : ""}`,
         { headers: getApiHeaders() }
       );
 

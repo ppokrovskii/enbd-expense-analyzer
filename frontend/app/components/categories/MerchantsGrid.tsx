@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Category } from "../../categories/page";
+import { API_URL } from "../../utils/api";
 
 interface MerchantGroup {
   merchant: string;
@@ -55,15 +56,15 @@ export default function MerchantsGrid({
 
       // If single category and specific rule selected
       if (selectedCategory && selectedRuleIndex !== null) {
-        url = `http://localhost:8000/api/categories/${selectedCategory.id}/rules/${selectedRuleIndex}/merchants?${dateParams}`;
+        url = `${API_URL}/api/categories/${selectedCategory.id}/rules/${selectedRuleIndex}/merchants?${dateParams}`;
       }
       // If single category selected (no specific rule)
       else if (selectedCategory) {
-        url = `http://localhost:8000/api/categories/${selectedCategory.id}/all-rule-merchants?${dateParams}`;
+        url = `${API_URL}/api/categories/${selectedCategory.id}/all-rule-merchants?${dateParams}`;
       }
       // Default: show all merchants
       else {
-        url = `http://localhost:8000/api/categories/all-merchants?${dateParams}`;
+        url = `${API_URL}/api/categories/all-merchants?${dateParams}`;
       }
 
       const response = await fetch(url);

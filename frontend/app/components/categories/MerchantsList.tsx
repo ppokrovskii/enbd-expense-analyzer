@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { API_URL } from "../../utils/api";
 
 interface MerchantGroup {
   merchant: string;
@@ -53,10 +54,10 @@ export default function MerchantsList({
       let url: string;
       if (isOtherCategory || ruleIndex === null) {
         // Fetch uncategorized merchants
-        url = `http://localhost:8000/api/categories/other/merchants?days=${statsWindow}`;
+        url = `${API_URL}/api/categories/other/merchants?days=${statsWindow}`;
       } else {
         // Fetch merchants for specific rule
-        url = `http://localhost:8000/api/categories/${categoryId}/rules/${ruleIndex}/merchants?days=${statsWindow}`;
+        url = `${API_URL}/api/categories/${categoryId}/rules/${ruleIndex}/merchants?days=${statsWindow}`;
       }
 
       const response = await fetch(url);
@@ -109,7 +110,7 @@ export default function MerchantsList({
     setApplying(true);
     try {
       const response = await fetch(
-        `http://localhost:8000/api/categories/${targetCategoryId}/apply-merchant`,
+        `${API_URL}/api/categories/${targetCategoryId}/apply-merchant`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },

@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { getApiHeaders } from "../utils/api";
+import { getApiHeaders, API_URL } from "../utils/api";
 import SkeletonLoader from "../components/ui/SkeletonLoader";
 
 interface ReportListItem {
@@ -47,7 +47,7 @@ export default function ReportsListPage() {
 
   const fetchPersons = async () => {
     try {
-      const response = await fetch('http://localhost:8000/api/persons/', {
+      const response = await fetch(`${API_URL}/api/persons/`, {
         headers: getApiHeaders(),
       });
       if (response.ok) {
@@ -70,7 +70,7 @@ export default function ReportsListPage() {
       }
       
       const response = await fetch(
-        `http://localhost:8000/api/reports/?${params.toString()}`,
+        `${API_URL}/api/reports/?${params.toString()}`,
         { headers: getApiHeaders() }
       );
       
@@ -88,7 +88,7 @@ export default function ReportsListPage() {
   const createReport = async () => {
     setCreating(true);
     try {
-      const response = await fetch('http://localhost:8000/api/reports/', {
+      const response = await fetch(`${API_URL}/api/reports/`, {
         method: 'POST',
         headers: getApiHeaders(),
         body: JSON.stringify({}),
@@ -109,7 +109,7 @@ export default function ReportsListPage() {
     if (!confirm('Are you sure you want to delete this report?')) return;
     
     try {
-      const response = await fetch(`http://localhost:8000/api/reports/${reportId}`, {
+      const response = await fetch(`${API_URL}/api/reports/${reportId}`, {
         method: 'DELETE',
         headers: getApiHeaders(),
       });
@@ -124,7 +124,7 @@ export default function ReportsListPage() {
 
   const duplicateReport = async (reportId: string) => {
     try {
-      const response = await fetch(`http://localhost:8000/api/reports/${reportId}/duplicate`, {
+      const response = await fetch(`${API_URL}/api/reports/${reportId}/duplicate`, {
         method: 'POST',
         headers: getApiHeaders(),
       });
@@ -154,7 +154,7 @@ export default function ReportsListPage() {
     }
     
     try {
-      const response = await fetch(`http://localhost:8000/api/reports/${reportId}`, {
+      const response = await fetch(`${API_URL}/api/reports/${reportId}`, {
         method: 'PUT',
         headers: getApiHeaders(),
         body: JSON.stringify({ name: renameValue.trim() }),

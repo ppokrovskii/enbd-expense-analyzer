@@ -1,5 +1,6 @@
 """Categories API router - Category CRUD, Rules, and AI operations."""
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import func, or_, cast, String
 from typing import List, Optional
@@ -7,6 +8,7 @@ from pydantic import BaseModel
 from datetime import datetime, timedelta, date
 
 from app.shared.filtered_query import FilteredQueryContext, get_filtered_context
+from app.shared.exceptions import LLMError
 from .models import Category, Rule
 from .service import CategoryService
 from .llm_service import LLMCategorizationService
@@ -482,16 +484,30 @@ def get_category_all_merchants(
 # AI Bulk Suggestion Endpoints
 # ============================================================================
 
-@router.post("/categories/ai-bulk-suggest", response_model=List[AIBulkSuggestion])
+@router.post("/categories/ai-bulk-suggest")
 def ai_bulk_suggest(
     request: AIBulkSuggestRequest,
     ctx: FilteredQueryContext = Depends(get_filtered_context)
 ):
-    """Get AI suggestions for categorizing merchants in bulk."""
+    """Get AI suggestions for categorizing merchants in bulk.
+    
+    Returns:
+        List[AIBulkSuggestion] on success
+        
+    Raises:
+        HTTPException with 503 status and user-friendly message on LLM errors
+    """
     try:
         llm_service = LLMCategorizationService(ctx.db)
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=f"LLM service initialization failed: {str(e)}")
+        raise HTTPException(
+            status_code=400, 
+            detail={
+                "error_code": "config_error",
+                "message": str(e),
+                "user_message": "AI categorization is not configured. Please contact the administrator."
+            }
+        )
     
     cutoff_date = datetime.now().date() - timedelta(days=request.days)
     
@@ -513,7 +529,19 @@ def ai_bulk_suggest(
         return []
     
     merchant_list = merchant_list[:request.limit]
-    ai_suggestions = llm_service.bulk_suggest_categories(merchant_list)
+    
+    try:
+        ai_suggestions = llm_service.bulk_suggest_categories(merchant_list, raise_on_error=True)
+    except LLMError as e:
+        # Return a structured error response with user-friendly message
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "error_code": e.error_code,
+                "message": e.message,
+                "user_message": e.user_message
+            }
+        )
     
     result = []
     for suggestion in ai_suggestions:
