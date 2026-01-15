@@ -61,7 +61,8 @@ export function useWebSocket({
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const host = window.location.hostname;
       const port = process.env.NEXT_PUBLIC_WS_PORT || '8000';
-      const wsUrl = `${protocol}//${host}:${port}/ws/${userId}`;
+      // Backend expects user_id as query parameter: /ws?user_id=xxx
+      const wsUrl = `${protocol}//${host}:${port}/ws?user_id=${encodeURIComponent(userId)}`;
       
       const ws = new WebSocket(wsUrl);
       
