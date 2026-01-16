@@ -143,15 +143,11 @@ class JobService:
         # Load account variables
         account_vars = AccountService.get_account_variables(db, user_id)
         
-        # Query uncategorized/Other transactions (filter by person_id if specified)
-        # Only target truly uncategorized transactions (NULL or '')
-        # "Other" is a real category meaning "reviewed but doesn't fit anywhere"
+        # For new rules, we want to apply them to ALL transactions that match,
+        # not just uncategorized ones. This allows users to recategorize transactions.
+        # Query ALL transactions for this user (the rule matching will filter)
         txn_query = db.query(Transaction).filter(
-            Transaction.user_id == user_id,
-            or_(
-                Transaction.category.is_(None),
-                Transaction.category == ''
-            )
+            Transaction.user_id == user_id
         )
         if person_id is not None:
             txn_query = txn_query.filter(Transaction.person_id == person_id)
@@ -162,6 +158,7 @@ class JobService:
         
         updated_count = 0
         rules_applied: Dict[str, int] = {}
+        total_amount = 0.0
         
         for txn in transactions:
             search_text = (txn.search_text or f"{txn.details or ''} {txn.description or ''}").upper()
@@ -183,9 +180,11 @@ class JobService:
                     matched_category = rule_data["category_name"]
                     break
             
+            # Update if matched and category is different (allows recategorization)
             if matched_category and txn.category != matched_category:
                 txn.category = matched_category
                 updated_count += 1
+                total_amount += abs(txn.amount_signed or 0)
                 rules_applied[matched_category] = rules_applied.get(matched_category, 0) + 1
         
         # Complete the job
@@ -267,14 +266,10 @@ class JobService:
             account_vars = AccountService.get_account_variables(db, user_id)
             logger.debug(f"📦 [RuleApply] Loaded {len(account_vars)} account variables | job_id={job_id}")
             
-            # Only target truly uncategorized transactions (NULL or '')
-            # "Other" is a real category meaning "reviewed but doesn't fit anywhere"
+            # For applying specific rules, query ALL transactions (not just uncategorized)
+            # This allows users to recategorize transactions with new rules
             txn_query = db.query(Transaction).filter(
-                Transaction.user_id == user_id,
-                or_(
-                    Transaction.category.is_(None),
-                    Transaction.category == ''
-                )
+                Transaction.user_id == user_id
             )
             if person_id is not None:
                 txn_query = txn_query.filter(Transaction.person_id == person_id)
@@ -284,7 +279,7 @@ class JobService:
             job.total_items = total
             db.commit()
             
-            logger.info(f"📊 [RuleApply] Found {total} uncategorized transactions to process | job_id={job_id} person_id={person_id}")
+            logger.info(f"📊 [RuleApply] Found {total} transactions to process for rule matching | job_id={job_id} person_id={person_id}")
             
             updated_count = 0
             total_amount = 0.0  # Track total amount of updated transactions
