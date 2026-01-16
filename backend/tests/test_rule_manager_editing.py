@@ -242,10 +242,12 @@ class TestRuleEditingAPI:
         
         assert response.status_code == 201
         data = response.json()
-        assert data["category_id"] == category.id
-        assert data["keywords"] == ["STARBUCKS", "COSTA"]
-        assert data["exclude_keywords"] == ["REFUND"]
-        assert data["priority"] == 5
+        # Response is now nested: { rule: {...}, job_id: "...", ... }
+        rule_data = data["rule"]
+        assert rule_data["category_id"] == category.id
+        assert rule_data["keywords"] == ["STARBUCKS", "COSTA"]
+        assert rule_data["exclude_keywords"] == ["REFUND"]
+        assert rule_data["priority"] == 5
     
     def test_create_rule_invalid_category(self, test_db):
         """Creating rule with invalid category_id returns 404."""

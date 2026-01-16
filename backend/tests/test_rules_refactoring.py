@@ -52,9 +52,11 @@ def test_create_rule_for_category(test_db):
     
     assert response.status_code == 201
     data = response.json()
-    assert data["category_id"] == category_id
-    assert data["keywords"] == ["CARREFOUR", "LULU", "SUPERMARKET"]
-    assert data["exclude_keywords"] == ["REFUND"]
+    # Response is now nested: { rule: {...}, job_id: "...", ... }
+    rule_data = data["rule"]
+    assert rule_data["category_id"] == category_id
+    assert rule_data["keywords"] == ["CARREFOUR", "LULU", "SUPERMARKET"]
+    assert rule_data["exclude_keywords"] == ["REFUND"]
 
 
 def test_migrate_existing_categories_to_rules(test_db):
