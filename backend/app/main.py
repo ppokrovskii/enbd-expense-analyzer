@@ -1,6 +1,8 @@
 """Main FastAPI application entry point."""
 import logging
+import os
 import sys
+import asyncio
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
@@ -33,14 +35,21 @@ def configure_logging():
     llm_logger = logging.getLogger("llm")
     llm_logger.setLevel(logging.INFO)
     
+    # PgQueuer logger
+    pgqueuer_logger = logging.getLogger("pgqueuer")
+    pgqueuer_logger.setLevel(logging.INFO)
+    
     # Reduce noise from third-party libraries
     logging.getLogger("httpx").setLevel(logging.WARNING)
     logging.getLogger("httpcore").setLevel(logging.WARNING)
     logging.getLogger("openai").setLevel(logging.WARNING)
     logging.getLogger("urllib3").setLevel(logging.WARNING)
+    logging.getLogger("asyncpg").setLevel(logging.WARNING)
 
 # Initialize logging on module load
 configure_logging()
+
+logger = logging.getLogger("main")
 
 # Import domain routers
 from app.domains.transactions import router as transactions_router
@@ -81,13 +90,39 @@ async def lifespan(app: FastAPI):
             db.add(other_category)
             db.commit()
     except Exception as e:
-        print(f"Warning: Could not ensure 'Other' category exists: {e}")
+        logger.warning(f"Could not ensure 'Other' category exists: {e}")
     finally:
         db.close()
     
+    # Initialize PgQueuer if enabled
+    pgq = None
+    worker_task = None
+    use_pgqueuer = os.environ.get("USE_PGQUEUER", "true").lower() == "true"
+    
+    if use_pgqueuer:
+        try:
+            from app.domains.jobs.tasks import init_pgqueuer
+            database_url = os.environ.get("DATABASE_URL", "")
+            if database_url:
+                pgq = await init_pgqueuer(database_url)
+                logger.info("🚀 PgQueuer initialized successfully")
+                
+                # Start worker in background task
+                worker_task = asyncio.create_task(pgq.run())
+                logger.info("👷 PgQueuer worker started in background")
+        except Exception as e:
+            logger.warning(f"⚠️ Could not initialize PgQueuer (falling back to threading): {e}")
+    
     yield  # Application is running
     
-    # Shutdown logic (if needed)
+    # Shutdown: Stop PgQueuer worker
+    if worker_task:
+        worker_task.cancel()
+        try:
+            await worker_task
+        except asyncio.CancelledError:
+            pass
+        logger.info("🛑 PgQueuer worker stopped")
 
 
 app = FastAPI(

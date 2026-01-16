@@ -1,5 +1,9 @@
-"""Jobs API endpoints for managing background jobs."""
+"""Jobs API endpoints for managing background jobs.
+
+Uses PgQueuer for event-driven job processing with PostgreSQL LISTEN/NOTIFY.
+"""
 import logging
+import os
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import List, Optional
@@ -12,6 +16,9 @@ from .models import BackgroundJob
 
 # Configure logger for jobs module
 logger = logging.getLogger("jobs")
+
+# Check if pgqueuer is enabled (can fallback to threading for tests)
+USE_PGQUEUER = os.environ.get("USE_PGQUEUER", "true").lower() == "true"
 
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
 
@@ -52,12 +59,26 @@ class TriggerJobResponse(BaseModel):
 
 
 @router.post("/recategorize", response_model=TriggerJobResponse)
-def trigger_recategorization(ctx: FilteredQueryContext = Depends(get_filtered_context)):
-    """Trigger a background job to recategorize all transactions."""
+async def trigger_recategorization(ctx: FilteredQueryContext = Depends(get_filtered_context)):
+    """
+    Trigger a background job to recategorize all transactions.
+    
+    Uses PgQueuer with PostgreSQL LISTEN/NOTIFY for efficient event-driven processing.
+    """
     logger.info(f"🔄 POST /recategorize | user_id={ctx.user_id} person_id={ctx.person_id}")
-    # TODO: Add person_id support to JobService.create_recategorization_job
+    
+    if USE_PGQUEUER:
+        from .tasks import enqueue_recategorization
+        try:
+            job_id = await enqueue_recategorization(ctx.user_id, ctx.person_id)
+            logger.info(f"✅ Recategorization job enqueued (pgqueuer) | job_id={job_id}")
+            return TriggerJobResponse(job_id=job_id, status="queued")
+        except Exception as e:
+            logger.warning(f"⚠️ PgQueuer unavailable, falling back to threading | error={e}")
+    
+    # Fallback to threading-based implementation
     job_id = JobService.create_recategorization_job(ctx.db, ctx.user_id)
-    logger.info(f"✅ Recategorization job created | job_id={job_id} user_id={ctx.user_id}")
+    logger.info(f"✅ Recategorization job created (threading) | job_id={job_id}")
     return TriggerJobResponse(job_id=job_id, status="pending")
 
 
@@ -75,7 +96,7 @@ class ApplyRulesResponse(BaseModel):
 
 
 @router.post("/apply-rules", response_model=ApplyRulesResponse)
-def apply_rules(
+async def apply_rules(
     request: ApplyRulesRequest,
     sync: bool = False,
     ctx: FilteredQueryContext = Depends(get_filtered_context)
@@ -83,18 +104,18 @@ def apply_rules(
     """
     Apply specific rules to uncategorized transactions.
     
+    Uses PgQueuer with PostgreSQL LISTEN/NOTIFY for efficient event-driven processing.
+    
     This triggers a background job that:
     1. Finds all "Other" or uncategorized transactions
     2. Applies only the specified rules to matching transactions
     3. Sends WebSocket notifications with progress and results
     
-    Use this when applying newly created rules instead of full recategorization.
-    
     Args:
-        sync: If True, run synchronously and return after completion. 
-              Default False (background job with WebSocket notifications).
+        sync: If True, run synchronously (fallback to threading). 
+              Default False (async job via PgQueuer).
     
-    WebSocket notifications sent (when sync=False):
+    WebSocket notifications sent:
     - job_progress: {type, job_id, progress, processed, total}
     - job_complete: {type, job_id, result: {transactions_updated, by_category}}
     """
@@ -107,13 +128,11 @@ def apply_rules(
             detail="At least one rule_id is required"
         )
     
-    # TODO: Add person_id support to JobService.create_rule_apply_job
-    job_id = JobService.create_rule_apply_job(
-        ctx.db, ctx.user_id, request.rule_ids, run_sync=sync
-    )
-    
-    # If sync, get the final status
+    # Sync mode always uses threading (for tests)
     if sync:
+        job_id = JobService.create_rule_apply_job(
+            ctx.db, ctx.user_id, request.rule_ids, run_sync=True
+        )
         job = JobService.get_job_status(ctx.db, job_id)
         result_msg = f"Applied {len(request.rule_ids)} rule(s): {job.result.get('transactions_updated', 0)} transactions updated" if job and job.result else "Completed"
         logger.info(f"✅ Apply-rules completed (sync) | job_id={job_id} result={result_msg}")
@@ -124,7 +143,26 @@ def apply_rules(
             message=result_msg
         )
     
-    logger.info(f"✅ Apply-rules job created (async) | job_id={job_id} rule_count={len(request.rule_ids)}")
+    # Async mode uses PgQueuer
+    if USE_PGQUEUER:
+        from .tasks import enqueue_apply_rules
+        try:
+            job_id = await enqueue_apply_rules(ctx.user_id, request.rule_ids, ctx.person_id)
+            logger.info(f"✅ Apply-rules job enqueued (pgqueuer) | job_id={job_id}")
+            return ApplyRulesResponse(
+                job_id=job_id,
+                status="queued",
+                rule_count=len(request.rule_ids),
+                message=f"Queued {len(request.rule_ids)} rule(s) for application"
+            )
+        except Exception as e:
+            logger.warning(f"⚠️ PgQueuer unavailable, falling back to threading | error={e}")
+    
+    # Fallback to threading
+    job_id = JobService.create_rule_apply_job(
+        ctx.db, ctx.user_id, request.rule_ids, run_sync=False
+    )
+    logger.info(f"✅ Apply-rules job created (threading) | job_id={job_id}")
     return ApplyRulesResponse(
         job_id=job_id,
         status="pending",

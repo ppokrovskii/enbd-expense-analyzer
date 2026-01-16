@@ -397,8 +397,8 @@ class JobService:
             logger.info(f"📋 [Recategorize] Loaded {len(rules)} categorization rules | job_id={job_id}")
             
             # Log rule details at debug level
-            for rule in rules:
-                logger.debug(f"   Rule: {rule.get('name', 'unnamed')} | keywords={len(rule.get('keywords', []))} priority={rule.get('priority', 0)}")
+            for category_name, rule_config in rules.items():
+                logger.debug(f"   Rule: {category_name} | keywords={len(rule_config.get('keywords', []))}")
             
             # Load all transactions for user
             transactions = db.query(Transaction).filter_by(user_id=user_id).all()
