@@ -68,6 +68,7 @@ interface PendingSuggestion extends AISuggestion {
   id: string;
   edited_category: string;
   edited_pattern: string;
+  edited_pattern_type: string;
   status: "pending" | "applied" | "rejected";
   categoryId?: number;
 }
@@ -264,6 +265,7 @@ export default function RulesManagerPage() {
           id: `ai-${idx}`,
           edited_category: s.suggested_category,
           edited_pattern: s.suggested_pattern,
+          edited_pattern_type: s.pattern_type,
           status: "pending" as const,
           categoryId: categoryExists?.id,
         };
@@ -1141,19 +1143,54 @@ function AISuggestionCard({
           </div>
         </div>
 
-        {/* Row 3: Pattern */}
-        <div>
-          <label className="block text-sm font-medium text-[var(--color-text-secondary)] mb-2">
-            Keywords <span className="text-[var(--color-text-tertiary)]">(separate with |)</span>
-          </label>
+        {/* Row 3: Pattern + Type */}
+        <div className="space-y-3">
+          <div className="flex items-center gap-3">
+            <label className="block text-sm font-medium text-[var(--color-text-secondary)]">
+              Pattern
+            </label>
+            <select
+              value={suggestion.edited_pattern_type}
+              onChange={(e) => onUpdate({ edited_pattern_type: e.target.value })}
+              disabled={isApplied}
+              className="input text-xs py-1 px-2 w-auto disabled:opacity-60"
+              title="Pattern matching type"
+            >
+              <option value="keyword">Keyword (substring)</option>
+              <option value="keyword_or">Keyword OR (pipe-separated)</option>
+              <option value="regex">Regex</option>
+            </select>
+            <span className={`text-xs px-2 py-0.5 rounded-full ${
+              suggestion.edited_pattern_type === 'regex' 
+                ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300'
+                : suggestion.edited_pattern_type === 'keyword_or'
+                ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'
+                : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'
+            }`}>
+              {suggestion.edited_pattern_type === 'regex' ? '.*' : suggestion.edited_pattern_type === 'keyword_or' ? 'A|B' : 'ABC'}
+            </span>
+          </div>
           <input
             type="text"
             value={suggestion.edited_pattern}
             onChange={(e) => onUpdate({ edited_pattern: e.target.value })}
             disabled={isApplied}
             className="input w-full text-sm font-mono disabled:opacity-60"
-            placeholder="keyword1 | keyword2"
+            placeholder={
+              suggestion.edited_pattern_type === 'regex' 
+                ? '^PATTERN\\b or \\bWORD\\b'
+                : suggestion.edited_pattern_type === 'keyword_or'
+                ? 'keyword1|keyword2|keyword3'
+                : 'keyword (matches as substring)'
+            }
           />
+          <p className="text-xs text-[var(--color-text-tertiary)]">
+            {suggestion.edited_pattern_type === 'regex' 
+              ? 'Regex: Use ^ for start, $ for end, \\b for word boundary'
+              : suggestion.edited_pattern_type === 'keyword_or'
+              ? 'Pipe-separated: Matches if ANY keyword is found'
+              : 'Keyword: Matches if this text appears anywhere in merchant name'}
+          </p>
         </div>
       </div>
     </div>
