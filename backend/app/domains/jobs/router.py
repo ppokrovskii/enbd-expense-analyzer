@@ -1,4 +1,5 @@
 """Jobs API endpoints for managing background jobs."""
+import logging
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import List, Optional
@@ -9,6 +10,8 @@ from app.shared.filtered_query import FilteredQueryContext, get_filtered_context
 from .service import JobService
 from .models import BackgroundJob
 
+# Configure logger for jobs module
+logger = logging.getLogger("jobs")
 
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
 
@@ -51,8 +54,10 @@ class TriggerJobResponse(BaseModel):
 @router.post("/recategorize", response_model=TriggerJobResponse)
 def trigger_recategorization(ctx: FilteredQueryContext = Depends(get_filtered_context)):
     """Trigger a background job to recategorize all transactions."""
+    logger.info(f"🔄 POST /recategorize | user_id={ctx.user_id} person_id={ctx.person_id}")
     # TODO: Add person_id support to JobService.create_recategorization_job
     job_id = JobService.create_recategorization_job(ctx.db, ctx.user_id)
+    logger.info(f"✅ Recategorization job created | job_id={job_id} user_id={ctx.user_id}")
     return TriggerJobResponse(job_id=job_id, status="pending")
 
 
@@ -93,7 +98,10 @@ def apply_rules(
     - job_progress: {type, job_id, progress, processed, total}
     - job_complete: {type, job_id, result: {transactions_updated, by_category}}
     """
+    logger.info(f"🔄 POST /apply-rules | user_id={ctx.user_id} rule_ids={request.rule_ids} sync={sync}")
+    
     if not request.rule_ids:
+        logger.warning(f"⚠️ Apply-rules rejected: no rule_ids provided | user_id={ctx.user_id}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="At least one rule_id is required"
@@ -107,13 +115,16 @@ def apply_rules(
     # If sync, get the final status
     if sync:
         job = JobService.get_job_status(ctx.db, job_id)
+        result_msg = f"Applied {len(request.rule_ids)} rule(s): {job.result.get('transactions_updated', 0)} transactions updated" if job and job.result else "Completed"
+        logger.info(f"✅ Apply-rules completed (sync) | job_id={job_id} result={result_msg}")
         return ApplyRulesResponse(
             job_id=job_id,
             status=job.status if job else "unknown",
             rule_count=len(request.rule_ids),
-            message=f"Applied {len(request.rule_ids)} rule(s): {job.result.get('transactions_updated', 0)} transactions updated" if job and job.result else "Completed"
+            message=result_msg
         )
     
+    logger.info(f"✅ Apply-rules job created (async) | job_id={job_id} rule_count={len(request.rule_ids)}")
     return ApplyRulesResponse(
         job_id=job_id,
         status="pending",

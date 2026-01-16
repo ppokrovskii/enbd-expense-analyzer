@@ -1,7 +1,46 @@
 """Main FastAPI application entry point."""
+import logging
+import sys
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
+
+# Configure logging for the application
+def configure_logging():
+    """Configure application-wide logging with best practices."""
+    # Create formatter with timestamp, level, logger name, and message
+    formatter = logging.Formatter(
+        "%(asctime)s | %(levelname)-8s | %(name)-12s | %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S"
+    )
+    
+    # Configure root logger
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.INFO)
+    
+    # Only add handler if none exist (avoid duplicate logs)
+    if not root_logger.handlers:
+        console_handler = logging.StreamHandler(sys.stdout)
+        console_handler.setFormatter(formatter)
+        root_logger.addHandler(console_handler)
+    
+    # Configure specific loggers
+    # Jobs logger - INFO level for progress tracking
+    jobs_logger = logging.getLogger("jobs")
+    jobs_logger.setLevel(logging.INFO)
+    
+    # LLM logger - INFO level for API call tracking
+    llm_logger = logging.getLogger("llm")
+    llm_logger.setLevel(logging.INFO)
+    
+    # Reduce noise from third-party libraries
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
+    logging.getLogger("openai").setLevel(logging.WARNING)
+    logging.getLogger("urllib3").setLevel(logging.WARNING)
+
+# Initialize logging on module load
+configure_logging()
 
 # Import domain routers
 from app.domains.transactions import router as transactions_router
