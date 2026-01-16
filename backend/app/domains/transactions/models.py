@@ -11,7 +11,7 @@ class Transaction(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(String(50), nullable=False, server_default='default_user', index=True)
-    person_id = Column(Integer, ForeignKey('persons.id'), nullable=True, index=True)
+    workspace_id = Column(Integer, ForeignKey('workspaces.id'), nullable=True, index=True)
     date = Column(Date, nullable=False, index=True)
     account = Column(String(100), nullable=False)
     description = Column(Text)

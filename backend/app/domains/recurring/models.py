@@ -26,7 +26,7 @@ class RecurringGroup(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(String, nullable=False, index=True)
-    person_id = Column(Integer, ForeignKey("persons.id"), nullable=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"), nullable=True)
     pattern_name = Column(String, nullable=False)
     merchant = Column(String, nullable=False)
     estimated_amount = Column(Float, nullable=False)

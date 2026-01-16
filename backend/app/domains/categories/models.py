@@ -11,18 +11,18 @@ class Category(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(String(50), nullable=False, server_default='default_user', index=True)
-    person_id = Column(Integer, ForeignKey('persons.id', ondelete='CASCADE'), nullable=True, index=True)
+    workspace_id = Column(Integer, ForeignKey('workspaces.id', ondelete='CASCADE'), nullable=True, index=True)
     name = Column(String(100), nullable=False, index=True)
     color = Column(String(20))  # Color from 64-color palette
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     
     __table_args__ = (
-        Index('idx_categories_user_person_name', 'user_id', 'person_id', 'name', unique=True),
+        Index('idx_categories_user_workspace_name', 'user_id', 'workspace_id', 'name', unique=True),
     )
     
     def __repr__(self):
-        return f"<Category(id={self.id}, user_id={self.user_id}, person_id={self.person_id}, name={self.name})>"
+        return f"<Category(id={self.id}, user_id={self.user_id}, workspace_id={self.workspace_id}, name={self.name})>"
 
 
 class Rule(Base):
@@ -33,7 +33,7 @@ class Rule(Base):
     id = Column(Integer, primary_key=True, index=True)
     category_id = Column(Integer, ForeignKey('categories.id', ondelete='CASCADE'), nullable=False)
     user_id = Column(String(50), nullable=False, index=True)
-    person_id = Column(Integer, ForeignKey('persons.id', ondelete='CASCADE'), nullable=True, index=True)
+    workspace_id = Column(Integer, ForeignKey('workspaces.id', ondelete='CASCADE'), nullable=True, index=True)
     keywords = Column(JSON, nullable=False, default=list)  # List of keyword strings
     exclude_keywords = Column(JSON, default=list)  # Exclusion patterns
     priority = Column(Integer, default=0)  # For rule ordering

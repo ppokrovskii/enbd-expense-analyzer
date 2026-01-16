@@ -36,7 +36,7 @@ class Insight(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(String, nullable=False, index=True)
-    person_id = Column(Integer, ForeignKey("persons.id"), nullable=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"), nullable=True)
     insight_type = Column(String, nullable=False)
     severity = Column(String, default=InsightSeverity.INFO.value)
     title = Column(String(200), nullable=False)

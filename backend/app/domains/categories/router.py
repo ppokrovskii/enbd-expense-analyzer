@@ -639,9 +639,10 @@ def ai_bulk_suggest(
         
         # Build stats query using the SAME matching logic as rules
         # This ensures the count reflects what will actually be categorized
+        # Use ABS(amount_signed) so we get positive totals for display
         stats_query = ctx.query(Transaction).with_entities(
             func.count(Transaction.id).label('count'),
-            func.sum(Transaction.amount_signed).label('amount')
+            func.sum(func.abs(Transaction.amount_signed)).label('amount')
         )
         
         # Match using the suggested pattern (same as rule application)

@@ -11,7 +11,7 @@ class BackgroundJob(Base):
     
     id = Column(String(36), primary_key=True, index=True)  # UUID
     user_id = Column(String(50), nullable=False, index=True)
-    person_id = Column(Integer, ForeignKey("persons.id", ondelete="CASCADE"), nullable=True, index=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=True, index=True)
     job_type = Column(String(50), nullable=False)  # e.g., "recategorization"
     status = Column(String(20), nullable=False, default="pending")  # pending, running, completed, failed
     progress = Column(Integer, default=0)

@@ -30,14 +30,14 @@ class Report(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(String, nullable=False, index=True)
-    person_id = Column(Integer, ForeignKey("persons.id", ondelete="CASCADE"), nullable=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=True)
     name = Column(String(255), nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationships
     sections = relationship("ReportSection", back_populates="report", cascade="all, delete-orphan", order_by="ReportSection.position")
-    person = relationship("Person", backref="reports")
+    workspace = relationship("Workspace", backref="reports")
 
 
 class ReportSection(Base):
@@ -107,7 +107,7 @@ class ReportSectionResponse(BaseModel):
 class ReportCreate(BaseModel):
     """Schema for creating a new report."""
     name: Optional[str] = None  # Auto-generated if not provided
-    person_id: Optional[int] = None  # Uses active person if not provided
+    workspace_id: Optional[int] = None  # Uses active workspace if not provided
 
 
 class ReportUpdate(BaseModel):
@@ -119,8 +119,8 @@ class ReportResponse(BaseModel):
     """Schema for report response."""
     id: str
     name: str
-    person_id: Optional[int] = None
-    person_name: Optional[str] = None
+    workspace_id: Optional[int] = None
+    workspace_name: Optional[str] = None
     sections: List[ReportSectionResponse] = []
     created_at: str
     updated_at: str
@@ -133,8 +133,8 @@ class ReportListItem(BaseModel):
     """Schema for report in list view."""
     id: str
     name: str
-    person_id: Optional[int] = None
-    person_name: Optional[str] = None
+    workspace_id: Optional[int] = None
+    workspace_name: Optional[str] = None
     section_count: int = 0
     created_at: str
     updated_at: str

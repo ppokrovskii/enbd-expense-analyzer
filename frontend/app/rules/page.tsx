@@ -1073,7 +1073,7 @@ function AISuggestionCard({
             </div>
             <p className="text-sm text-[var(--color-text-secondary)]">
               {suggestion.transaction_count} transaction{suggestion.transaction_count !== 1 ? 's' : ''} 
-              {suggestion.total_amount > 0 && ` · ${formatCurrency(suggestion.total_amount)}`}
+              {suggestion.total_amount !== 0 && ` · ${formatCurrency(Math.abs(suggestion.total_amount))}`}
             </p>
           </div>
 

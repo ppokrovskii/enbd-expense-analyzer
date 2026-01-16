@@ -1,7 +1,7 @@
 """
-FilteredQueryContext - Centralized user/person filtering for all database queries.
+FilteredQueryContext - Centralized user/workspace filtering for all database queries.
 
-This module provides a systematic solution for applying user_id and person_id
+This module provides a systematic solution for applying user_id and workspace_id
 filters to all database operations, ensuring data isolation without manual
 filtering in every endpoint.
 
@@ -19,11 +19,11 @@ Auth0 Integration:
         async def get_filtered_context(
             db: Session = Depends(get_db),
             token: dict = Depends(get_current_user),  # Auth0 JWT validation
-            x_person_id: Optional[str] = Header(default=None, alias='X-Person-Id')
+            x_workspace_id: Optional[str] = Header(default=None, alias='X-Workspace-Id')
         ) -> FilteredQueryContext:
             user_id = token.get("sub")  # Auth0 user ID from JWT
-            person_id = int(x_person_id) if x_person_id else None
-            return FilteredQueryContext(db, user_id, person_id)
+            workspace_id = int(x_workspace_id) if x_workspace_id else None
+            return FilteredQueryContext(db, user_id, workspace_id)
 """
 from fastapi import Depends, Header
 from sqlalchemy.orm import Session
