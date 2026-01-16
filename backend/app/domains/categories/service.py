@@ -1,13 +1,75 @@
 """Service for categorizing transactions using rules."""
 import re
+from enum import Enum
 from typing import List, Dict, Optional
 from sqlalchemy.orm import Session
 from .models import Category, Rule
 from app.domains.transactions.models import Transaction
 
 
+class PatternType(str, Enum):
+    """Pattern matching types for categorization rules."""
+    KEYWORD = "keyword"           # Simple substring match (case-insensitive) - DEFAULT
+    KEYWORD_OR = "keyword_or"     # Pipe-separated alternatives: "UBER|LYFT"
+    REGEX = "regex"               # Full regex: "^RMA\\b", "\\bDU\\b"
+
+
 # Regex pattern indicators - if keyword contains any of these, treat as regex
-REGEX_INDICATORS = ('^', '$', '\\b', '\\d', '\\w', '\\s', '[', ']', '+', '*', '?', '(', ')')
+# Note: * and ? are NOT included as they're common in real merchant names
+REGEX_INDICATORS = ('^', '$', '\\b', '\\d', '\\w', '\\s', '[', ']', '+', '(', ')')
+
+
+def detect_pattern_type(pattern: str) -> PatternType:
+    """Auto-detect the pattern type from the pattern string."""
+    if not pattern:
+        return PatternType.KEYWORD
+    
+    # Check for regex indicators (specific regex syntax)
+    if any(indicator in pattern for indicator in REGEX_INDICATORS):
+        return PatternType.REGEX
+    
+    # Check for pipe-separated alternatives
+    if '|' in pattern:
+        return PatternType.KEYWORD_OR
+    
+    # Default: simple substring match
+    return PatternType.KEYWORD
+
+
+def match_pattern(pattern: str, text: str, pattern_type: Optional[PatternType] = None) -> bool:
+    """
+    Match a pattern against text using the appropriate matching strategy.
+    
+    Args:
+        pattern: The pattern to match
+        text: The text to match against
+        pattern_type: Optional explicit pattern type (auto-detected if not provided)
+    
+    Returns:
+        True if the pattern matches the text
+    """
+    if not pattern or not text:
+        return False
+    
+    # Auto-detect pattern type if not provided
+    if pattern_type is None:
+        pattern_type = detect_pattern_type(pattern)
+    
+    text_upper = text.upper()
+    
+    if pattern_type == PatternType.REGEX:
+        try:
+            return bool(re.search(pattern, text, re.IGNORECASE))
+        except re.error:
+            # Invalid regex, fall back to substring
+            return pattern.upper() in text_upper
+    
+    elif pattern_type == PatternType.KEYWORD_OR:
+        alternatives = [alt.strip() for alt in pattern.split('|')]
+        return any(alt and alt.upper() in text_upper for alt in alternatives)
+    
+    else:  # KEYWORD - simple substring match (safest, default)
+        return pattern.upper() in text_upper
 
 
 class CategoryService:
@@ -84,12 +146,12 @@ class CategoryService:
         matches = []
         
         for category, config in rules.items():
-            # Check exclusions first
+            # Check exclusions first (also support pattern matching)
             exclude_keywords = config.get('exclude_keywords', [])
             excluded = False
             if exclude_keywords:
                 for exclude in exclude_keywords:
-                    if exclude and exclude.upper() in search_upper:
+                    if exclude and match_pattern(exclude, search_text):
                         excluded = True
                         break
             
@@ -106,30 +168,10 @@ class CategoryService:
                     expanded_kw = expanded_kw.replace(var, value)
                 expanded_keywords.append(expanded_kw)
             
-            # Match keywords
+            # Match keywords using pattern matching
             for keyword in expanded_keywords:
-                # Check if this is a regex pattern
-                is_regex = any(indicator in keyword for indicator in REGEX_INDICATORS)
-                
-                if is_regex:
-                    # Regex matching
-                    try:
-                        if re.search(keyword, search_text, re.IGNORECASE):
-                            matches.append((category, len(keyword), keyword))
-                    except re.error:
-                        # Invalid regex, fall back to substring match
-                        if keyword.upper() in search_upper:
-                            matches.append((category, len(keyword), keyword))
-                elif '|' in keyword:
-                    # Pipe-separated alternatives
-                    alternatives = [alt.strip() for alt in keyword.split('|')]
-                    for alt in alternatives:
-                        if alt and alt.upper() in search_upper:
-                            matches.append((category, len(alt), alt))
-                else:
-                    keyword_upper = keyword.upper()
-                    if keyword_upper in search_upper:
-                        matches.append((category, len(keyword), keyword))
+                if match_pattern(keyword, search_text):
+                    matches.append((category, len(keyword), keyword))
         
         # Return longest match (most specific)
         if matches:
@@ -151,11 +193,11 @@ class CategoryService:
         
         matches = []
         for category, config in rules.items():
-            # Check exclusions
+            # Check exclusions (also support pattern matching)
             exclude_keywords = config.get('exclude_keywords', [])
             excluded = False
             for exclude in exclude_keywords:
-                if exclude and exclude.upper() in merchant_upper:
+                if exclude and match_pattern(exclude, merchant):
                     excluded = True
                     break
             
@@ -169,30 +211,9 @@ class CategoryService:
                 for var, value in account_vars.items():
                     expanded_kw = expanded_kw.replace(var, value)
                 
-                # Check if this is a regex pattern
-                is_regex = any(indicator in expanded_kw for indicator in REGEX_INDICATORS)
-                
-                if is_regex:
-                    # Regex matching
-                    try:
-                        if re.search(expanded_kw, merchant, re.IGNORECASE):
-                            # For regex, use pattern length as specificity measure
-                            matches.append((category, len(expanded_kw), expanded_kw))
-                    except re.error:
-                        # Invalid regex, fall back to substring match
-                        if expanded_kw.upper() in merchant_upper:
-                            matches.append((category, len(expanded_kw), expanded_kw))
-                elif '|' in expanded_kw:
-                    # Pipe-separated alternatives (keyword_or)
-                    alternatives = [alt.strip() for alt in expanded_kw.split('|')]
-                    for alt in alternatives:
-                        if alt and alt.upper() in merchant_upper:
-                            matches.append((category, len(alt), alt))
-                else:
-                    # Simple keyword substring match
-                    keyword_upper = expanded_kw.upper()
-                    if keyword_upper in merchant_upper:
-                        matches.append((category, len(expanded_kw), expanded_kw))
+                # Use unified pattern matching
+                if match_pattern(expanded_kw, merchant):
+                    matches.append((category, len(expanded_kw), expanded_kw))
         
         # Return category with longest matching keyword (most specific)
         if matches:

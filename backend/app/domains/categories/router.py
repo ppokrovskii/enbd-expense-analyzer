@@ -10,7 +10,7 @@ from datetime import datetime, timedelta, date
 from app.shared.filtered_query import FilteredQueryContext, get_filtered_context
 from app.shared.exceptions import LLMError
 from .models import Category, Rule
-from .service import CategoryService
+from .service import CategoryService, PatternType, detect_pattern_type, match_pattern
 from .llm_service import LLMCategorizationService
 from app.domains.transactions.models import Transaction
 
@@ -107,7 +107,7 @@ class AIBulkSuggestion(BaseModel):
     merchant: str
     suggested_category: str
     suggested_pattern: str
-    pattern_type: str
+    pattern_type: PatternType
     transaction_count: int
     total_amount: float
     is_new_category: bool
@@ -599,7 +599,8 @@ def ai_bulk_suggest(
         
         # Get the suggested pattern - this is what the rule will use for matching
         suggested_pattern = suggestion.get("pattern", ai_merchant_name)
-        pattern_type = suggestion.get("pattern_type", "keyword")
+        # Auto-detect pattern type from the pattern itself
+        detected_type = detect_pattern_type(suggested_pattern)
         
         # Build stats query using the SAME matching logic as rules
         # This ensures the count reflects what will actually be categorized
@@ -609,14 +610,13 @@ def ai_bulk_suggest(
         )
         
         # Match using the suggested pattern (same as rule application)
-        if pattern_type == "regex":
-            # For regex patterns, use PostgreSQL regex match
-            # Clean regex for SQL (remove common regex anchors for SIMILAR TO)
+        if detected_type == PatternType.REGEX:
+            # For regex patterns, use PostgreSQL regex match (~* is case-insensitive)
             stats_query = stats_query.filter(
-                func.upper(Transaction.merchant).op('~*')(suggested_pattern)
+                Transaction.merchant.op('~*')(suggested_pattern)
             )
-        elif '|' in suggested_pattern:
-            # Pipe-separated alternatives (keyword_or)
+        elif detected_type == PatternType.KEYWORD_OR:
+            # Pipe-separated alternatives
             alternatives = [alt.strip() for alt in suggested_pattern.split('|')]
             or_conditions = [
                 func.upper(Transaction.merchant).contains(alt.upper())
@@ -625,7 +625,7 @@ def ai_bulk_suggest(
             if or_conditions:
                 stats_query = stats_query.filter(or_(*or_conditions))
         else:
-            # Simple keyword substring match (case-insensitive)
+            # Simple keyword substring match (case-insensitive) - DEFAULT
             stats_query = stats_query.filter(
                 func.upper(Transaction.merchant).contains(suggested_pattern.upper())
             )
@@ -647,7 +647,7 @@ def ai_bulk_suggest(
             merchant=ai_merchant_name,  # Display the AI's cleaned name
             suggested_category=suggestion.get("category", "Other"),
             suggested_pattern=suggested_pattern,
-            pattern_type=pattern_type,
+            pattern_type=detected_type,
             transaction_count=stats.count if stats else 0,
             total_amount=float(stats.amount) if stats and stats.amount else 0.0,
             is_new_category=suggestion.get("is_new_category", False)
