@@ -12,11 +12,14 @@ DATABASE_URL = os.getenv(
     "postgresql+psycopg://enbd_user:enbd_password@localhost:5432/enbd_db"
 )
 
+# SQL echo: disabled by default, enable with SQL_ECHO=true for debugging
+SQL_ECHO = os.getenv("SQL_ECHO", "false").lower() in ("true", "1", "yes")
+
 # Create engine
 engine = create_engine(
     DATABASE_URL,
     poolclass=NullPool,  # Disable connection pooling for testing
-    echo=True,  # Log SQL statements for debugging
+    echo=SQL_ECHO,  # Log SQL statements only when explicitly enabled
 )
 
 # Session factory

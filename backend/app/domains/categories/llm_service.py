@@ -1,5 +1,7 @@
 """Service for LLM-powered categorization using OpenAI."""
 import os
+import time
+import logging
 from typing import List, Optional, Tuple
 from dotenv import load_dotenv
 from sqlalchemy.orm import Session
@@ -13,6 +15,18 @@ from app.shared.exceptions import (
 )
 
 load_dotenv()
+
+# Configure logger for LLM operations
+logger = logging.getLogger("llm_service")
+logger.setLevel(logging.INFO)
+
+# Cost estimates per 1K tokens (as of 2024, adjust as needed)
+MODEL_COSTS = {
+    "gpt-4o": {"input": 0.0025, "output": 0.01},
+    "gpt-4o-mini": {"input": 0.00015, "output": 0.0006},
+    "gpt-4": {"input": 0.03, "output": 0.06},
+    "gpt-3.5-turbo": {"input": 0.0005, "output": 0.0015},
+}
 
 
 class LLMCategorizationService:
@@ -126,7 +140,7 @@ class LLMCategorizationService:
         categories = query.all()
         category_names = [c.name for c in categories] if categories else self.DEFAULT_CATEGORIES
         
-        print(f"[LLM] Building prompt with {len(category_names)} categories for user={self.user_id}, person={self.person_id}: {category_names}")
+        logger.info(f"📋 LLM initialized with {len(category_names)} categories for user={self.user_id}, person={self.person_id}")
         
         if "Other" not in category_names:
             category_names.append("Other")
@@ -175,7 +189,7 @@ Return ONLY the category name."""
             category = response.choices[0].message.content.strip()
             return category if category else "Other"
         except Exception as e:
-            print(f"Error calling LLM for merchant '{merchant}': {e}")
+            logger.error(f"❌ LLM categorize error for '{merchant[:50]}...': {e}")
             if raise_on_error:
                 raise parse_openai_error(e) from e
             return "Other"
@@ -244,10 +258,10 @@ Return ONLY the category name."""
             LLMError: If raise_on_error is True and an error occurs
         """
         if not merchants:
-            print(f"[LLM] bulk_suggest_categories called with empty merchant list")
+            logger.debug("bulk_suggest_categories called with empty merchant list")
             return []
         
-        print(f"[LLM] Calling OpenAI to categorize {len(merchants)} merchants...")
+        logger.info(f"🤖 OpenAI API call: model={self.model}, merchants={len(merchants)}")
         
         function_schema = {
             "name": "categorize_merchants_bulk",
@@ -277,6 +291,7 @@ Return ONLY the category name."""
         merchant_list = "\n".join([f"- {m}" for m in merchants])
         user_prompt = f"Categorize these merchants:\n{merchant_list}"
         
+        start_time = time.time()
         try:
             response = self.client.chat.completions.create(
                 model=self.model,
@@ -288,18 +303,44 @@ Return ONLY the category name."""
                 function_call={"name": "categorize_merchants_bulk"},
                 temperature=0.0
             )
+            latency_ms = (time.time() - start_time) * 1000
             
-            function_call = response.choices[0].message.function_call
-            if function_call and function_call.arguments:
+            # Extract token usage from response
+            usage = response.usage
+            input_tokens = usage.prompt_tokens if usage else 0
+            output_tokens = usage.completion_tokens if usage else 0
+            total_tokens = usage.total_tokens if usage else 0
+            
+            # Calculate estimated cost
+            model_cost = MODEL_COSTS.get(self.model, MODEL_COSTS.get("gpt-4o"))
+            estimated_cost = (input_tokens / 1000 * model_cost["input"]) + (output_tokens / 1000 * model_cost["output"])
+            
+            function_call_result = response.choices[0].message.function_call
+            if function_call_result and function_call_result.arguments:
                 import json
-                result = json.loads(function_call.arguments)
+                result = json.loads(function_call_result.arguments)
                 categorizations = result.get("categorizations", [])
-                print(f"[LLM] OpenAI returned {len(categorizations)} categorizations")
+                
+                # Log detailed info about the OpenAI call
+                logger.info(
+                    f"✅ OpenAI response: "
+                    f"latency={latency_ms:.0f}ms, "
+                    f"tokens={{in:{input_tokens}, out:{output_tokens}, total:{total_tokens}}}, "
+                    f"cost=${estimated_cost:.4f}, "
+                    f"results={len(categorizations)}"
+                )
+                
+                # Log what categories were suggested
+                for cat in categorizations:
+                    logger.info(f"   → '{cat.get('merchant', '')[:40]}...' → {cat.get('category')} (pattern: {cat.get('pattern')})")
+                
                 return categorizations
-            print(f"[LLM] OpenAI returned no function call arguments")
+            
+            logger.warning(f"⚠️ OpenAI returned no function call arguments after {latency_ms:.0f}ms")
             return []
         except Exception as e:
-            print(f"Error in bulk suggestion: {e}")
+            latency_ms = (time.time() - start_time) * 1000
+            logger.error(f"❌ OpenAI error after {latency_ms:.0f}ms: {e}")
             if raise_on_error:
                 raise parse_openai_error(e) from e
             # Fallback: try individual categorization (may also fail)
