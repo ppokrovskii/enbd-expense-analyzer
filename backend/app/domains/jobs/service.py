@@ -144,12 +144,13 @@ class JobService:
         account_vars = AccountService.get_account_variables(db, user_id)
         
         # Query uncategorized/Other transactions (filter by person_id if specified)
+        # Only target truly uncategorized transactions (NULL or '')
+        # "Other" is a real category meaning "reviewed but doesn't fit anywhere"
         txn_query = db.query(Transaction).filter(
             Transaction.user_id == user_id,
             or_(
                 Transaction.category.is_(None),
-                Transaction.category == '',
-                Transaction.category == 'Other'
+                Transaction.category == ''
             )
         )
         if person_id is not None:
@@ -266,13 +267,13 @@ class JobService:
             account_vars = AccountService.get_account_variables(db, user_id)
             logger.debug(f"📦 [RuleApply] Loaded {len(account_vars)} account variables | job_id={job_id}")
             
-            # Query uncategorized/Other transactions (filter by person_id if specified)
+            # Only target truly uncategorized transactions (NULL or '')
+            # "Other" is a real category meaning "reviewed but doesn't fit anywhere"
             txn_query = db.query(Transaction).filter(
                 Transaction.user_id == user_id,
                 or_(
                     Transaction.category.is_(None),
-                    Transaction.category == '',
-                    Transaction.category == 'Other'
+                    Transaction.category == ''
                 )
             )
             if person_id is not None:

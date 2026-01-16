@@ -448,8 +448,9 @@ def get_other_category_merchants(
         date_threshold = datetime.now().date() - timedelta(days=days)
         base_filters.append(Transaction.date >= date_threshold)
     
-    # Category filter (uncategorized)
-    base_filters.append(or_(Transaction.category == None, Transaction.category == 'Other'))
+    # Category filter (truly uncategorized only - NULL or empty)
+    # "Other" is a real category, not uncategorized
+    base_filters.append(or_(Transaction.category == None, Transaction.category == ''))
     
     results = ctx.raw_query(
         Transaction.merchant,
@@ -557,11 +558,12 @@ def ai_bulk_suggest(
     elif request.level == "merchant" and request.merchant:
         merchant_list = [request.merchant]
     else:
-        # Get uncategorized merchants for user/person
+        # Get truly uncategorized merchants for user/person (NULL or empty only)
+        # "Other" is a real category, not uncategorized
         merchants_query = ctx.query(Transaction).with_entities(
             Transaction.merchant.distinct()
         ).filter(
-            Transaction.category.in_([None, 'Other', '']),
+            or_(Transaction.category.is_(None), Transaction.category == ''),
             Transaction.date >= cutoff_date
         ).all()
         merchant_list = [m[0] for m in merchants_query if m[0]]
@@ -604,13 +606,13 @@ def ai_bulk_suggest(
         )
         
         # Only apply date and category filters if auto-discovered (not explicitly selected)
+        # For auto-discovered: only count truly uncategorized (NULL or '')
         if not explicit_selection:
             stats_query = stats_query.filter(
                 Transaction.date >= cutoff_date,
                 or_(
                     Transaction.category.is_(None),
-                    Transaction.category == '',
-                    Transaction.category == 'Other'
+                    Transaction.category == ''
                 )
             )
         

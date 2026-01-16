@@ -227,18 +227,25 @@ export default function MerchantList({
   };
 
   const getCategoryBadgeClass = (category: string | null) => {
-    if (!category || category === 'Other') {
-      return "category-badge category-badge-uncategorized";
-    }
-    const color = categoryColors[category];
-    if (!color) {
+    // Only truly uncategorized (null/empty) gets uncategorized style
+    // "Other" is a real category with its own style
+    if (!category) {
       return "category-badge category-badge-uncategorized";
     }
     return "category-badge";
   };
   
   const getCategoryStyle = (category: string | null): React.CSSProperties | undefined => {
-    if (!category || category === 'Other') return undefined;
+    if (!category) {
+      return undefined; // Uncategorized uses CSS class styling
+    }
+    // "Other" gets a neutral gray style
+    if (category === 'Other') {
+      return {
+        backgroundColor: '#6b728040',
+        color: '#9ca3af',
+      };
+    }
     const color = categoryColors[category];
     if (color) {
       return {
