@@ -593,17 +593,42 @@ def ai_bulk_suggest(
     
     result = []
     for suggestion in ai_suggestions:
-        merchant_name = suggestion.get("merchant")
-        if not merchant_name:
+        ai_merchant_name = suggestion.get("merchant")
+        if not ai_merchant_name:
             continue
         
-        # Get stats for this merchant (filtered by user/person)
+        # Get the suggested pattern - this is what the rule will use for matching
+        suggested_pattern = suggestion.get("pattern", ai_merchant_name)
+        pattern_type = suggestion.get("pattern_type", "keyword")
+        
+        # Build stats query using the SAME matching logic as rules
+        # This ensures the count reflects what will actually be categorized
         stats_query = ctx.query(Transaction).with_entities(
             func.count(Transaction.id).label('count'),
             func.sum(Transaction.amount_signed).label('amount')
-        ).filter(
-            Transaction.merchant == merchant_name
         )
+        
+        # Match using the suggested pattern (same as rule application)
+        if pattern_type == "regex":
+            # For regex patterns, use PostgreSQL regex match
+            # Clean regex for SQL (remove common regex anchors for SIMILAR TO)
+            stats_query = stats_query.filter(
+                func.upper(Transaction.merchant).op('~*')(suggested_pattern)
+            )
+        elif '|' in suggested_pattern:
+            # Pipe-separated alternatives (keyword_or)
+            alternatives = [alt.strip() for alt in suggested_pattern.split('|')]
+            or_conditions = [
+                func.upper(Transaction.merchant).contains(alt.upper())
+                for alt in alternatives if alt
+            ]
+            if or_conditions:
+                stats_query = stats_query.filter(or_(*or_conditions))
+        else:
+            # Simple keyword substring match (case-insensitive)
+            stats_query = stats_query.filter(
+                func.upper(Transaction.merchant).contains(suggested_pattern.upper())
+            )
         
         # Only apply date and category filters if auto-discovered (not explicitly selected)
         # For auto-discovered: only count truly uncategorized (NULL or '')
@@ -619,10 +644,10 @@ def ai_bulk_suggest(
         stats = stats_query.first()
         
         result.append(AIBulkSuggestion(
-            merchant=merchant_name,
+            merchant=ai_merchant_name,  # Display the AI's cleaned name
             suggested_category=suggestion.get("category", "Other"),
-            suggested_pattern=suggestion.get("pattern", merchant_name),
-            pattern_type=suggestion.get("pattern_type", "keyword"),
+            suggested_pattern=suggested_pattern,
+            pattern_type=pattern_type,
             transaction_count=stats.count if stats else 0,
             total_amount=float(stats.amount) if stats and stats.amount else 0.0,
             is_new_category=suggestion.get("is_new_category", False)

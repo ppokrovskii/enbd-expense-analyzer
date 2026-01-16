@@ -1,8 +1,13 @@
 """Service for categorizing transactions using rules."""
+import re
 from typing import List, Dict, Optional
 from sqlalchemy.orm import Session
 from .models import Category, Rule
 from app.domains.transactions.models import Transaction
+
+
+# Regex pattern indicators - if keyword contains any of these, treat as regex
+REGEX_INDICATORS = ('^', '$', '\\b', '\\d', '\\w', '\\s', '[', ']', '+', '*', '?', '(', ')')
 
 
 class CategoryService:
@@ -103,7 +108,19 @@ class CategoryService:
             
             # Match keywords
             for keyword in expanded_keywords:
-                if '|' in keyword:
+                # Check if this is a regex pattern
+                is_regex = any(indicator in keyword for indicator in REGEX_INDICATORS)
+                
+                if is_regex:
+                    # Regex matching
+                    try:
+                        if re.search(keyword, search_text, re.IGNORECASE):
+                            matches.append((category, len(keyword), keyword))
+                    except re.error:
+                        # Invalid regex, fall back to substring match
+                        if keyword.upper() in search_upper:
+                            matches.append((category, len(keyword), keyword))
+                elif '|' in keyword:
                     # Pipe-separated alternatives
                     alternatives = [alt.strip() for alt in keyword.split('|')]
                     for alt in alternatives:
@@ -152,13 +169,27 @@ class CategoryService:
                 for var, value in account_vars.items():
                     expanded_kw = expanded_kw.replace(var, value)
                 
-                # Handle keyword_or pattern (pipe-separated alternatives)
-                if '|' in expanded_kw:
+                # Check if this is a regex pattern
+                is_regex = any(indicator in expanded_kw for indicator in REGEX_INDICATORS)
+                
+                if is_regex:
+                    # Regex matching
+                    try:
+                        if re.search(expanded_kw, merchant, re.IGNORECASE):
+                            # For regex, use pattern length as specificity measure
+                            matches.append((category, len(expanded_kw), expanded_kw))
+                    except re.error:
+                        # Invalid regex, fall back to substring match
+                        if expanded_kw.upper() in merchant_upper:
+                            matches.append((category, len(expanded_kw), expanded_kw))
+                elif '|' in expanded_kw:
+                    # Pipe-separated alternatives (keyword_or)
                     alternatives = [alt.strip() for alt in expanded_kw.split('|')]
                     for alt in alternatives:
                         if alt and alt.upper() in merchant_upper:
                             matches.append((category, len(alt), alt))
                 else:
+                    # Simple keyword substring match
                     keyword_upper = expanded_kw.upper()
                     if keyword_upper in merchant_upper:
                         matches.append((category, len(expanded_kw), expanded_kw))
