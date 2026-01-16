@@ -353,13 +353,23 @@ def get_summary_stats(
 @router.get("/filters/options")
 def get_filter_options(ctx: FilteredQueryContext = Depends(get_filtered_context)):
     """Get available filter options (categories, accounts, date range)."""
-    # Get unique categories (excluding None) - filtered by user/person
+    # Get unique categories (excluding None/empty) - filtered by user/person
     categories = ctx.query(Transaction).with_entities(
         Transaction.category
     ).filter(
-        Transaction.category.isnot(None)
+        Transaction.category.isnot(None),
+        Transaction.category != ''
     ).distinct().order_by(Transaction.category).all()
-    categories_list = [c[0] for c in categories]
+    categories_list = [c[0] for c in categories if c[0]]
+    
+    # Check if there are uncategorized transactions (NULL or empty category)
+    uncategorized_count = ctx.query(Transaction).filter(
+        or_(Transaction.category.is_(None), Transaction.category == '')
+    ).count()
+    
+    # Add "Uncategorized" as a pseudo-category if there are uncategorized transactions
+    if uncategorized_count > 0:
+        categories_list.append("Uncategorized")
     
     # Get unique accounts
     accounts = ctx.query(Transaction).with_entities(
@@ -379,7 +389,8 @@ def get_filter_options(ctx: FilteredQueryContext = Depends(get_filtered_context)
         "categories": categories_list,
         "accounts": accounts_list,
         "min_date": min_date.isoformat() if min_date else None,
-        "max_date": max_date.isoformat() if max_date else None
+        "max_date": max_date.isoformat() if max_date else None,
+        "uncategorized_count": uncategorized_count
     }
 
 

@@ -350,7 +350,8 @@ export default function SpendingChart({
     
     // Fallback color map for categories not yet in the system
     const colorMap: Record<string, string> = {
-      "Other": "#64748B", // Gray for Other
+      "Uncategorized": "#F59E0B", // Amber/Orange - needs attention
+      "Other": "#64748B", // Gray for Other (intentionally miscellaneous)
       "Transfer Between My Accounts": "#64748B", // Gray
       "Outgoing Transfer": "#94A3B8", // Light gray
       "Incoming Transfer": "#34C759", // Green (same as income)

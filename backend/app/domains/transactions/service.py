@@ -24,11 +24,17 @@ class TransactionService:
     @staticmethod
     def get_category_expression():
         """
-        Get the standardized category expression that treats NULL as 'Other'.
+        Get the standardized category expression that treats NULL/empty as 'Uncategorized'.
         
         This ensures consistent category handling across all queries.
+        'Uncategorized' = needs categorization (NULL or '')
+        'Other' = intentionally marked as miscellaneous
         """
-        return case((Transaction.category.is_(None), 'Other'), else_=Transaction.category)
+        return case(
+            (Transaction.category.is_(None), 'Uncategorized'),
+            (Transaction.category == '', 'Uncategorized'),
+            else_=Transaction.category
+        )
     
     @staticmethod
     def apply_base_filters(
