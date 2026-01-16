@@ -322,6 +322,9 @@ def list_rules(
 def create_rule(rule: RuleCreate, ctx: FilteredQueryContext = Depends(get_filtered_context)):
     """Create a new categorization rule and optionally apply it to existing transactions.
     
+    If a rule with the same keywords already exists, updates its category instead
+    of creating a duplicate. This enables easy recategorization.
+    
     When auto_apply=True (default), triggers a background job that:
     1. Finds all transactions matching the rule's keywords
     2. Updates their category
@@ -336,15 +339,47 @@ def create_rule(rule: RuleCreate, ctx: FilteredQueryContext = Depends(get_filter
     if not category:
         raise HTTPException(status_code=404, detail="Category not found")
     
-    new_rule = Rule(
-        category_id=rule.category_id,
-        keywords=rule.keywords,
-        exclude_keywords=rule.exclude_keywords or [],
-        priority=rule.priority
-    )
-    ctx.add(new_rule)  # Automatically sets user_id and person_id
-    ctx.commit()
-    ctx.refresh(new_rule)
+    # Check for existing rule with same keywords (exact match)
+    # This prevents duplicates and enables recategorization
+    existing_rule = None
+    if rule.keywords:
+        # Normalize keywords for comparison (uppercase, sorted)
+        new_keywords_set = set(kw.upper().strip() for kw in rule.keywords if kw)
+        
+        # Find rules with matching keywords
+        all_rules = ctx.query(Rule).all()
+        for r in all_rules:
+            if r.keywords:
+                existing_keywords_set = set(kw.upper().strip() for kw in r.keywords if kw)
+                # Check if keywords are the same (exact match)
+                if new_keywords_set == existing_keywords_set:
+                    existing_rule = r
+                    break
+    
+    if existing_rule:
+        # Update existing rule's category
+        old_category = ctx.get_by_id(Category, existing_rule.category_id)
+        old_category_name = old_category.name if old_category else "Unknown"
+        print(f"📝 Updating existing rule #{existing_rule.id} from '{old_category_name}' to '{category.name}' (keywords: {rule.keywords})")
+        existing_rule.category_id = rule.category_id
+        if rule.exclude_keywords is not None:
+            existing_rule.exclude_keywords = rule.exclude_keywords
+        if rule.priority is not None:
+            existing_rule.priority = rule.priority
+        ctx.commit()
+        ctx.refresh(existing_rule)
+        new_rule = existing_rule
+    else:
+        # Create new rule
+        new_rule = Rule(
+            category_id=rule.category_id,
+            keywords=rule.keywords,
+            exclude_keywords=rule.exclude_keywords or [],
+            priority=rule.priority
+        )
+        ctx.add(new_rule)  # Automatically sets user_id and person_id
+        ctx.commit()
+        ctx.refresh(new_rule)
     
     job_id = None
     transactions_affected = 0
