@@ -362,9 +362,9 @@ export default function RulesManagerPage() {
     }
   };
 
-  const showToast = (message: string) => {
+  const showToast = (message: string, duration: number = 6000) => {
     setToastMessage(message);
-    setTimeout(() => setToastMessage(null), 3000);
+    setTimeout(() => setToastMessage(null), duration);
   };
 
   const startEditing = (rule: Rule) => {
@@ -437,13 +437,8 @@ export default function RulesManagerPage() {
         
         if (!response.ok) throw new Error("Failed to create rule");
         
-        const result = await response.json();
-        const affected = result.transactions_affected || 0;
-        if (affected > 0) {
-          showToast(`Rule created! ${affected} transaction${affected !== 1 ? 's' : ''} updated`);
-        } else {
-          showToast("Rule created successfully");
-        }
+        // Don't show local toast - WebSocket 'rules_applied' message will handle it
+        // with proper transaction count and amount from the backend
       } else {
         const response = await fetch(`${API_URL}/api/rules/${editingRule.id}`, {
           method: "PUT",
@@ -499,8 +494,9 @@ export default function RulesManagerPage() {
       
       if (!response.ok) throw new Error("Failed to start recategorization");
       
-      const data = await response.json();
-      showToast(`Recategorization started! You'll be notified when complete.`);
+      // Don't show immediate toast - WebSocket will notify when complete
+      // Just show a subtle indicator that the job has started
+      showToast("Recategorization started in background...", 2000);
       
       // Reset button after a short delay - WebSocket will show actual completion
       setTimeout(() => setIsRecategorizing(false), 3000);
@@ -564,21 +560,14 @@ export default function RulesManagerPage() {
       
       if (!response.ok) throw new Error("Failed to create rule");
       
-      const result = await response.json();
-      const transactionsAffected = result.transactions_affected || 0;
+      // Consume response (WebSocket will show the toast with full details)
+      await response.json();
       
       // Mark as applied
       setAiSuggestions(prev => 
         prev.map(s => s.id === suggestion.id ? { ...s, status: "applied" as const } : s)
       );
       setAppliedCount(prev => prev + 1);
-      
-      // Show toast with transaction count
-      if (transactionsAffected > 0) {
-        showToast(`Rule created! ${transactionsAffected} transaction${transactionsAffected !== 1 ? 's' : ''} updated to "${suggestion.edited_category}"`);
-      } else {
-        showToast(`Rule created for ${suggestion.merchant}`);
-      }
       
       // Remove after animation
       setTimeout(() => {
@@ -603,8 +592,13 @@ export default function RulesManagerPage() {
     const pending = aiSuggestions.filter(s => s.status === "pending");
     
     for (const suggestion of pending) {
-      await handleApplySuggestion(suggestion);
+      try {
+        await handleApplySuggestion(suggestion);
+      } catch (err) {
+        console.error(`Failed to apply suggestion for ${suggestion.merchant}:`, err);
+      }
     }
+    // WebSocket will show individual toasts for each rule applied
   };
 
   const handleDone = () => {
@@ -639,6 +633,17 @@ export default function RulesManagerPage() {
   const filteredRules = useMemo(() => rules, [rules]);
   const pendingSuggestions = aiSuggestions.filter(s => s.status === "pending");
   const allProcessed = isAIMode && aiSuggestions.length === 0 && !aiLoading && appliedCount > 0;
+  
+  // Calculate totals for pending suggestions
+  const { totalTransactionCount, totalSuggestionsAmount } = useMemo(() => {
+    return pendingSuggestions.reduce(
+      (acc, s) => ({
+        totalTransactionCount: acc.totalTransactionCount + (s.transaction_count || 0),
+        totalSuggestionsAmount: acc.totalSuggestionsAmount + (s.total_amount || 0),
+      }),
+      { totalTransactionCount: 0, totalSuggestionsAmount: 0 }
+    );
+  }, [pendingSuggestions]);
 
   return (
     <div className="min-h-screen bg-[var(--color-bg-primary)]">
@@ -688,7 +693,7 @@ export default function RulesManagerPage() {
                   </h1>
                 </div>
                 {isAIMode ? (
-                  <div className="flex items-center gap-2 text-sm text-[var(--color-text-secondary)]">
+                  <div className="flex items-center gap-3 text-sm text-[var(--color-text-secondary)]">
                     <div className="flex items-center gap-1.5">
                       <div className="w-24 h-1.5 bg-[var(--color-bg-tertiary)] rounded-full overflow-hidden">
                         <div 
@@ -700,6 +705,11 @@ export default function RulesManagerPage() {
                         {appliedCount} of {aiMerchants.length}
                       </span>
                     </div>
+                    {totalTransactionCount > 0 && (
+                      <span className="text-xs text-[var(--color-text-secondary)] border-l border-[var(--color-border)] pl-3">
+                        {totalTransactionCount} transaction{totalTransactionCount !== 1 ? 's' : ''} · {formatCurrency(totalSuggestionsAmount)}
+                      </span>
+                    )}
                   </div>
                 ) : (
                   <p className="text-sm text-[var(--color-text-secondary)]">

@@ -214,16 +214,22 @@ class JobService:
         start_time = time.time()
         logger.info(f"🔄 [RuleApply] Starting job | job_id={job_id} user_id={user_id} person_id={person_id} rule_ids={rule_ids}")
         
-        db = SessionLocal()
+        db = None
         try:
+            logger.info(f"📦 [RuleApply] Creating DB session | job_id={job_id}")
+            db = SessionLocal()
+            logger.info(f"📦 [RuleApply] DB session created | job_id={job_id}")
+            
             job = db.query(BackgroundJob).filter_by(id=job_id).first()
             if not job:
                 logger.error(f"❌ [RuleApply] Job not found | job_id={job_id}")
                 return
             
+            logger.info(f"📦 [RuleApply] Job found, updating status | job_id={job_id}")
             job.status = "running"
             job.started_at = datetime.utcnow()
             db.commit()
+            logger.info(f"📦 [RuleApply] Job status updated to running | job_id={job_id}")
             
             # Load the specific rules
             rules = db.query(Rule).filter(
@@ -240,7 +246,7 @@ class JobService:
                 job.result = {"transactions_updated": 0, "message": "No valid rules found"}
                 job.completed_at = datetime.utcnow()
                 db.commit()
-                asyncio.run(ws_manager.send_job_complete(user_id, job_id, job.result))
+                asyncio.run(ws_manager.send_job_complete(user_id, job_id, "rule_apply", job.result))
                 return
             
             # Build a map of rule -> category
@@ -280,7 +286,9 @@ class JobService:
             logger.info(f"📊 [RuleApply] Found {total} uncategorized transactions to process | job_id={job_id} person_id={person_id}")
             
             updated_count = 0
+            total_amount = 0.0  # Track total amount of updated transactions
             rules_applied: Dict[str, int] = {}  # category -> count
+            amounts_by_category: Dict[str, float] = {}  # category -> total amount
             last_progress_log = 0
             
             for i, txn in enumerate(transactions):
@@ -311,7 +319,10 @@ class JobService:
                     logger.debug(f"   ✓ Match: txn_id={txn.id} rule_id={matched_rule_id} '{txn.merchant or txn.details[:30] if txn.details else '?'}...' → {matched_category}")
                     txn.category = matched_category
                     updated_count += 1
+                    txn_amount = abs(float(txn.amount)) if txn.amount else 0.0
+                    total_amount += txn_amount
                     rules_applied[matched_category] = rules_applied.get(matched_category, 0) + 1
+                    amounts_by_category[matched_category] = amounts_by_category.get(matched_category, 0.0) + txn_amount
                 
                 # Send progress every 50 transactions or at the end
                 progress = int(((i + 1) / total) * 100) if total > 0 else 100
@@ -319,7 +330,7 @@ class JobService:
                     job.progress = progress
                     job.processed_items = i + 1
                     db.commit()
-                    asyncio.run(ws_manager.send_job_progress(user_id, job_id, progress, i + 1, total))
+                    asyncio.run(ws_manager.send_job_progress(user_id, job_id, "rule_apply", progress, i + 1, total))
                 
                 # Log at key milestones (every 25%)
                 if progress >= last_progress_log + 25 or i == total - 1:
@@ -357,24 +368,31 @@ class JobService:
                     logger.info(f"      {cat}: {count} transactions")
             
             # Send completion notification (both generic and toast-friendly)
-            asyncio.run(ws_manager.send_job_complete(user_id, job_id, result))
-            asyncio.run(ws_manager.send_rules_applied(user_id, job_id, updated_count, rules_applied))
+            logger.debug(f"📤 [RuleApply] Sending WebSocket notifications | job_id={job_id}")
+            try:
+                asyncio.run(ws_manager.send_job_complete(user_id, job_id, "rule_apply", result))
+                asyncio.run(ws_manager.send_rules_applied(user_id, job_id, updated_count, rules_applied, total_amount))
+                logger.debug(f"📤 [RuleApply] WebSocket notifications sent | job_id={job_id}")
+            except Exception as ws_error:
+                logger.error(f"⚠️ [RuleApply] WebSocket send failed | job_id={job_id} error={ws_error}")
             
         except Exception as e:
             elapsed = time.time() - start_time
             logger.error(f"❌ [RuleApply] Failed | job_id={job_id} duration={elapsed:.2f}s error={str(e)}", exc_info=True)
             try:
-                job = db.query(BackgroundJob).filter_by(id=job_id).first()
-                if job:
-                    job.status = "failed"
-                    job.error = str(e)
-                    job.completed_at = datetime.utcnow()
-                    db.commit()
-                    asyncio.run(ws_manager.send_job_failed(user_id, job_id, str(e)))
+                if db:
+                    job = db.query(BackgroundJob).filter_by(id=job_id).first()
+                    if job:
+                        job.status = "failed"
+                        job.error = str(e)
+                        job.completed_at = datetime.utcnow()
+                        db.commit()
+                asyncio.run(ws_manager.send_job_failed(user_id, job_id, "rule_apply", str(e)))
             except Exception as inner_e:
                 logger.error(f"❌ [RuleApply] Failed to update job status | job_id={job_id} error={str(inner_e)}")
         finally:
-            db.close()
+            if db:
+                db.close()
     
     @staticmethod
     def _run_recategorization(job_id: str, user_id: str):
@@ -444,7 +462,7 @@ class JobService:
                     job.progress = progress
                     job.processed_items = i + 1
                     db.commit()
-                    asyncio.run(ws_manager.send_job_progress(user_id, job_id, progress, i + 1, total))
+                    asyncio.run(ws_manager.send_job_progress(user_id, job_id, "recategorization", progress, i + 1, total))
                 
                 # Log at key milestones
                 if progress >= last_progress_log + 25 or i == total - 1:
@@ -474,7 +492,7 @@ class JobService:
                     for new_cat, count in sorted(transitions.items(), key=lambda x: -x[1]):
                         logger.info(f"      {old_cat} → {new_cat}: {count} transactions")
             
-            asyncio.run(ws_manager.send_job_complete(user_id, job_id, {"transactions_updated": total, "transactions_changed": total_changed}))
+            asyncio.run(ws_manager.send_job_complete(user_id, job_id, "recategorization", {"transactions_updated": total, "transactions_changed": total_changed}))
             
         except Exception as e:
             elapsed = time.time() - start_time
@@ -486,7 +504,7 @@ class JobService:
                     job.error = str(e)
                     job.completed_at = datetime.utcnow()
                     db.commit()
-                    asyncio.run(ws_manager.send_job_failed(user_id, job_id, str(e)))
+                    asyncio.run(ws_manager.send_job_failed(user_id, job_id, "recategorization", str(e)))
             except Exception as inner_e:
                 logger.error(f"❌ [Recategorize] Failed to update job status | job_id={job_id} error={str(inner_e)}")
         finally:

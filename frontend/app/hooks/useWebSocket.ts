@@ -29,6 +29,7 @@ export interface RulesAppliedMessage {
   type: 'rules_applied';
   job_id: string;
   transactions_updated: number;
+  total_amount: number;
   by_category: Record<string, number>;
   toast_message: string;
 }

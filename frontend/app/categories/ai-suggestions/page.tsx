@@ -157,9 +157,9 @@ export default function AICategorizationSuggestionsPage() {
     }
   };
 
-  const showToast = (message: string) => {
+  const showToast = (message: string, duration: number = 6000) => {
     setToastMessage(message);
-    setTimeout(() => setToastMessage(null), 3000);
+    setTimeout(() => setToastMessage(null), duration);
   };
 
   const handleCreateCategoryFirst = async (index: number) => {

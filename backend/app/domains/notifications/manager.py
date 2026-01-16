@@ -29,7 +29,7 @@ class ConnectionManager:
             except ValueError:
                 pass
     
-    async def send_job_progress(self, user_id: str, job_id: str, progress: int, processed: int, total: int):
+    async def send_job_progress(self, user_id: str, job_id: str, job_type: str, progress: int, processed: int, total: int):
         """Send job progress update to all connections for a user."""
         if user_id not in self.active_connections:
             return
@@ -37,6 +37,7 @@ class ConnectionManager:
         message = {
             "type": "job_progress",
             "job_id": job_id,
+            "job_type": job_type,
             "progress": progress,
             "processed": processed,
             "total": total
@@ -53,12 +54,12 @@ class ConnectionManager:
         for conn in dead_connections:
             self.disconnect(conn, user_id)
     
-    async def send_job_complete(self, user_id: str, job_id: str, result: dict):
+    async def send_job_complete(self, user_id: str, job_id: str, job_type: str, result: dict):
         """Send job completion notification to all connections for a user."""
         if user_id not in self.active_connections:
             return
         
-        message = {"type": "job_complete", "job_id": job_id, "result": result}
+        message = {"type": "job_complete", "job_id": job_id, "job_type": job_type, "result": result}
         
         dead_connections = []
         for connection in self.active_connections[user_id]:
@@ -71,7 +72,7 @@ class ConnectionManager:
         for conn in dead_connections:
             self.disconnect(conn, user_id)
     
-    async def send_rules_applied(self, user_id: str, job_id: str, transactions_updated: int, by_category: dict):
+    async def send_rules_applied(self, user_id: str, job_id: str, transactions_updated: int, by_category: dict, total_amount: float = 0.0):
         """
         Send rule application result notification - optimized for toaster display.
         
@@ -80,26 +81,33 @@ class ConnectionManager:
             "type": "rules_applied",
             "job_id": "...",
             "transactions_updated": 15,
+            "total_amount": 1234.56,
             "by_category": {"Groceries": 10, "Transport": 5},
-            "toast_message": "Categorized 15 transactions (Groceries: 10, Transport: 5)"
+            "toast_message": "Categorized 15 transactions totaling AED 1,234.56"
         }
         """
         if user_id not in self.active_connections:
             return
         
-        # Build toast-friendly message
+        # Build toast-friendly message with amount
         if transactions_updated == 0:
             toast_message = "No transactions matched the applied rules"
-        elif by_category:
-            details = ", ".join([f"{cat}: {count}" for cat, count in by_category.items()])
-            toast_message = f"Categorized {transactions_updated} transactions ({details})"
+        elif total_amount > 0:
+            amount_str = f"{total_amount:,.2f}"
+            if by_category and len(by_category) == 1:
+                # Single category - show it in the message
+                cat_name = list(by_category.keys())[0]
+                toast_message = f"✓ {transactions_updated} transactions → {cat_name} (AED {amount_str})"
+            else:
+                toast_message = f"✓ Categorized {transactions_updated} transactions (AED {amount_str})"
         else:
-            toast_message = f"Categorized {transactions_updated} transactions"
+            toast_message = f"✓ Categorized {transactions_updated} transactions"
         
         message = {
             "type": "rules_applied",
             "job_id": job_id,
             "transactions_updated": transactions_updated,
+            "total_amount": total_amount,
             "by_category": by_category,
             "toast_message": toast_message
         }
@@ -115,12 +123,12 @@ class ConnectionManager:
         for conn in dead_connections:
             self.disconnect(conn, user_id)
     
-    async def send_job_failed(self, user_id: str, job_id: str, error: str):
+    async def send_job_failed(self, user_id: str, job_id: str, job_type: str, error: str):
         """Send job failure notification to all connections for a user."""
         if user_id not in self.active_connections:
             return
         
-        message = {"type": "job_failed", "job_id": job_id, "error": error}
+        message = {"type": "job_failed", "job_id": job_id, "job_type": job_type, "error": error}
         
         dead_connections = []
         for connection in self.active_connections[user_id]:
