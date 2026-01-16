@@ -489,15 +489,28 @@ export default function RulesManagerPage() {
       // Find or create category
       let categoryId = suggestion.categoryId;
       
+      // First, check if the category already exists by name
       if (!categoryId) {
-        // Create the category first
+        const existingCategory = categories.find(
+          c => c.name.toLowerCase() === suggestion.edited_category.toLowerCase()
+        );
+        if (existingCategory) {
+          categoryId = existingCategory.id;
+        }
+      }
+      
+      // If still no category found, create a new one
+      if (!categoryId) {
         const catResponse = await fetch(`${API_URL}/api/categories/`, {
           method: "POST",
           headers: getApiHeaders(),
           body: JSON.stringify({ name: suggestion.edited_category }),
         });
         
-        if (!catResponse.ok) throw new Error("Failed to create category");
+        if (!catResponse.ok) {
+          const errorData = await catResponse.json().catch(() => ({}));
+          throw new Error(errorData.detail || "Failed to create category");
+        }
         const catResult = await catResponse.json();
         // API returns { category: {...}, transactions_affected: N }
         const newCat = catResult.category;
