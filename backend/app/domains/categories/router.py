@@ -584,6 +584,11 @@ def ai_bulk_suggest(
             }
         )
     
+    # If merchants were explicitly provided by the user, count ALL transactions (not just uncategorized)
+    # and without date filter - they want to see full stats for selected merchants
+    # If auto-discovered, count only uncategorized ones within the date range
+    explicit_selection = bool(request.merchants)
+    
     result = []
     for suggestion in ai_suggestions:
         merchant_name = suggestion.get("merchant")
@@ -591,18 +596,25 @@ def ai_bulk_suggest(
             continue
         
         # Get stats for this merchant (filtered by user/person)
-        stats = ctx.query(Transaction).with_entities(
+        stats_query = ctx.query(Transaction).with_entities(
             func.count(Transaction.id).label('count'),
             func.sum(Transaction.amount_signed).label('amount')
         ).filter(
-            Transaction.merchant == merchant_name,
-            Transaction.date >= cutoff_date,
-            or_(
-                Transaction.category.is_(None),
-                Transaction.category == '',
-                Transaction.category == 'Other'
+            Transaction.merchant == merchant_name
+        )
+        
+        # Only apply date and category filters if auto-discovered (not explicitly selected)
+        if not explicit_selection:
+            stats_query = stats_query.filter(
+                Transaction.date >= cutoff_date,
+                or_(
+                    Transaction.category.is_(None),
+                    Transaction.category == '',
+                    Transaction.category == 'Other'
+                )
             )
-        ).first()
+        
+        stats = stats_query.first()
         
         result.append(AIBulkSuggestion(
             merchant=merchant_name,
