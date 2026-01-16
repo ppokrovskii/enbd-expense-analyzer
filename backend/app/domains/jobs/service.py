@@ -55,7 +55,7 @@ class JobService:
         user_id: str, 
         rule_ids: List[int],
         run_sync: bool = False,
-        person_id: Optional[int] = None
+        workspace_id: Optional[int] = None
     ) -> str:
         """
         Create a background job to apply specific rules to matching transactions.
@@ -70,17 +70,17 @@ class JobService:
             run_sync: If True, run synchronously (for testing). Default False for background.
         """
         job_id = str(uuid4())
-        logger.info(f"📋 Creating rule-apply job | job_id={job_id} user_id={user_id} person_id={person_id} rule_ids={rule_ids} sync={run_sync}")
+        logger.info(f"📋 Creating rule-apply job | job_id={job_id} user_id={user_id} workspace_id={workspace_id} rule_ids={rule_ids} sync={run_sync}")
         
         job = BackgroundJob(
             id=job_id,
             user_id=user_id,
-            person_id=person_id,
+            workspace_id=workspace_id,
             job_type="rule_apply",
             status="pending",
             progress=0,
             processed_items=0,
-            job_params={"rule_ids": rule_ids, "person_id": person_id}
+            job_params={"rule_ids": rule_ids, "workspace_id": workspace_id}
         )
         db.add(job)
         db.commit()
@@ -88,12 +88,12 @@ class JobService:
         if run_sync:
             # Run synchronously (useful for testing)
             logger.debug(f"🔄 Running rule-apply synchronously | job_id={job_id}")
-            JobService._run_rule_apply_sync(db, job_id, user_id, rule_ids, person_id)
+            JobService._run_rule_apply_sync(db, job_id, user_id, rule_ids, workspace_id)
         else:
             # Run in background thread
             thread = threading.Thread(
                 target=JobService._run_rule_apply,
-                args=(job_id, user_id, rule_ids, person_id),
+                args=(job_id, user_id, rule_ids, workspace_id),
                 daemon=True
             )
             thread.start()
@@ -102,7 +102,7 @@ class JobService:
         return job_id
     
     @staticmethod
-    def _run_rule_apply_sync(db: Session, job_id: str, user_id: str, rule_ids: List[int], person_id: Optional[int] = None):
+    def _run_rule_apply_sync(db: Session, job_id: str, user_id: str, rule_ids: List[int], workspace_id: Optional[int] = None):
         """Synchronous version of rule apply for testing."""
         from app.domains.notifications.manager import ws_manager
         
@@ -149,8 +149,8 @@ class JobService:
         txn_query = db.query(Transaction).filter(
             Transaction.user_id == user_id
         )
-        if person_id is not None:
-            txn_query = txn_query.filter(Transaction.person_id == person_id)
+        if workspace_id is not None:
+            txn_query = txn_query.filter(Transaction.workspace_id == workspace_id)
         transactions = txn_query.all()
         
         total = len(transactions)
@@ -215,7 +215,7 @@ class JobService:
         db.commit()
     
     @staticmethod
-    def _run_rule_apply(job_id: str, user_id: str, rule_ids: List[int], person_id: Optional[int] = None):
+    def _run_rule_apply(job_id: str, user_id: str, rule_ids: List[int], workspace_id: Optional[int] = None):
         """
         Background worker that applies specific rules to matching transactions.
         
@@ -224,7 +224,7 @@ class JobService:
         from app.domains.notifications.manager import ws_manager
         
         start_time = time.time()
-        logger.info(f"🔄 [RuleApply] Starting job | job_id={job_id} user_id={user_id} person_id={person_id} rule_ids={rule_ids}")
+        logger.info(f"🔄 [RuleApply] Starting job | job_id={job_id} user_id={user_id} workspace_id={workspace_id} rule_ids={rule_ids}")
         
         db = None
         try:
@@ -283,15 +283,15 @@ class JobService:
             txn_query = db.query(Transaction).filter(
                 Transaction.user_id == user_id
             )
-            if person_id is not None:
-                txn_query = txn_query.filter(Transaction.person_id == person_id)
+            if workspace_id is not None:
+                txn_query = txn_query.filter(Transaction.workspace_id == workspace_id)
             transactions = txn_query.all()
             
             total = len(transactions)
             job.total_items = total
             db.commit()
             
-            logger.info(f"📊 [RuleApply] Found {total} transactions to process for rule matching | job_id={job_id} person_id={person_id}")
+            logger.info(f"📊 [RuleApply] Found {total} transactions to process for rule matching | job_id={job_id} workspace_id={workspace_id}")
             
             updated_count = 0
             total_amount = 0.0  # Track total amount of updated transactions

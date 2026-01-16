@@ -21,14 +21,14 @@ export function useStats(options: UseStatsOptions = {}) {
   const [error, setError] = useState<string | null>(null);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
 
-  // Listen for person changes
+  // Listen for workspace changes
   useEffect(() => {
-    const handlePersonChange = () => {
+    const handleWorkspaceChange = () => {
       setRefreshTrigger(prev => prev + 1);
     };
-    
-    window.addEventListener('personChanged', handlePersonChange);
-    return () => window.removeEventListener('personChanged', handlePersonChange);
+
+    window.addEventListener('workspaceChanged', handleWorkspaceChange);
+    return () => window.removeEventListener('workspaceChanged', handleWorkspaceChange);
   }, []);
 
   const fetchStats = async () => {

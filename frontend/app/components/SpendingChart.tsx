@@ -58,20 +58,20 @@ export default function SpendingChart({
   const [isRefreshing, setIsRefreshing] = useState(false); // New state for subsequent loads
   const [error, setError] = useState<string | null>(null);
   const [categoryColors, setCategoryColors] = useState<Record<string, string>>({});
-  const [personVersion, setPersonVersion] = useState(0); // Track person changes
+  const [workspaceVersion, setWorkspaceVersion] = useState(0); // Track workspace changes
   const fetchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Listen for person changes
+  // Listen for workspace changes
   useEffect(() => {
-    const handlePersonChange = () => {
-      setPersonVersion(v => v + 1);
+    const handleWorkspaceChange = () => {
+      setWorkspaceVersion(v => v + 1);
     };
-    
-    window.addEventListener('personChanged', handlePersonChange);
-    return () => window.removeEventListener('personChanged', handlePersonChange);
+
+    window.addEventListener('workspaceChanged', handleWorkspaceChange);
+    return () => window.removeEventListener('workspaceChanged', handleWorkspaceChange);
   }, []);
 
-  // Fetch category colors on mount and when person changes
+  // Fetch category colors on mount and when workspace changes
   useEffect(() => {
     const fetchCategoryColors = async () => {
       try {
@@ -93,7 +93,7 @@ export default function SpendingChart({
       }
     };
     fetchCategoryColors();
-  }, [personVersion]);
+  }, [workspaceVersion]);
 
   // Serialize array dependencies to avoid reference comparison issues
   const accountsKey = JSON.stringify(filters.accounts || []);
@@ -116,7 +116,7 @@ export default function SpendingChart({
       }
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters.startDate, filters.endDate, accountsKey, filters.merchant, filters.groupBy, filterMode, filteredCategoriesKey, personVersion]);
+  }, [filters.startDate, filters.endDate, accountsKey, filters.merchant, filters.groupBy, filterMode, filteredCategoriesKey, workspaceVersion]);
 
   const fetchCategoryTotals = async () => {
     // Fetch totals for all categories without category filter

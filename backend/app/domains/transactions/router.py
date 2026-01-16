@@ -1,5 +1,6 @@
 """Transactions API router - upload and data query endpoints."""
 from fastapi import APIRouter, UploadFile, File, Depends, Query, HTTPException
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from typing import List, Optional
@@ -9,10 +10,12 @@ from pydantic import BaseModel
 from decimal import Decimal
 import tempfile
 import shutil
+import csv
+import io
 
 from app.shared.filtered_query import FilteredQueryContext, get_filtered_context
 from app.shared.database import get_db
-from app.shared.dependencies import get_user_id, get_person_id
+from app.shared.dependencies import get_user_id, get_workspace_id
 from .models import Transaction
 from .service import TransactionService
 from .import_service import MultiBankImportService
@@ -79,7 +82,7 @@ async def upload_files(
         
         for file_path in temp_files:
             result = MultiBankImportService.import_file(
-                file_path, ctx.db, ctx.user_id, bank_name, ctx.person_id
+                file_path, ctx.db, ctx.user_id, bank_name, ctx.workspace_id
             )
             
             if result['success']:
@@ -195,7 +198,7 @@ def get_transactions(
         page_size=page_size,
         sort_by=sort_by,
         sort_order=sort_order,
-        person_id=ctx.person_id
+        workspace_id=ctx.workspace_id
     )
     
     # Calculate total amount for ALL filtered transactions (not just current page)
@@ -212,7 +215,7 @@ def get_transactions(
         page_size=total,
         sort_by=sort_by,
         sort_order=sort_order,
-        person_id=ctx.person_id
+        workspace_id=ctx.workspace_id
     )
     
     total_amount = sum(abs(float(t.amount_signed or 0)) for t in all_transactions)
@@ -223,6 +226,84 @@ def get_transactions(
         total_amount=total_amount,
         page=page,
         page_size=page_size
+    )
+
+
+@router.get("/transactions/export")
+def export_transactions_csv(
+    start_date: Optional[date] = Query(None, description="Filter by start date (inclusive)"),
+    end_date: Optional[date] = Query(None, description="Filter by end date (inclusive)"),
+    categories: Optional[List[str]] = Query(None, description="Filter by categories"),
+    accounts: Optional[List[str]] = Query(None, description="Filter by accounts"),
+    merchant: Optional[str] = Query(None, description="Filter by merchant substring"),
+    exclude_transfers: bool = Query(False, description="Exclude internal transfers"),
+    sort_by: str = Query('date', description="Sort by field: 'date' or 'amount'"),
+    sort_order: str = Query('desc', description="Sort order: 'asc' or 'desc'"),
+    ctx: FilteredQueryContext = Depends(get_filtered_context)
+):
+    """Export all filtered transactions as CSV file."""
+    # Get ALL transactions matching filters (no pagination)
+    transactions, total = TransactionService.get_filtered_transactions(
+        db=ctx.db,
+        user_id=ctx.user_id,
+        start_date=start_date,
+        end_date=end_date,
+        categories=categories,
+        accounts=accounts,
+        merchant=merchant,
+        exclude_transfers=exclude_transfers,
+        page=1,
+        page_size=100000,  # Large limit to get all
+        sort_by=sort_by,
+        sort_order=sort_order,
+        workspace_id=ctx.workspace_id
+    )
+    
+    # Create CSV in memory
+    output = io.StringIO()
+    writer = csv.writer(output)
+    
+    # Write header
+    writer.writerow([
+        'Date',
+        'Account',
+        'Merchant',
+        'Category',
+        'Description',
+        'Details',
+        'Amount',
+        'Balance'
+    ])
+    
+    # Write transactions
+    for t in transactions:
+        writer.writerow([
+            t.date.isoformat() if t.date else '',
+            t.account or '',
+            t.merchant or '',
+            t.category or 'Uncategorized',
+            t.description or '',
+            t.details or '',
+            float(t.amount_signed) if t.amount_signed else 0,
+            float(t.balance) if t.balance else ''
+        ])
+    
+    # Prepare filename with date range
+    filename_parts = ['transactions']
+    if start_date:
+        filename_parts.append(f'from_{start_date.isoformat()}')
+    if end_date:
+        filename_parts.append(f'to_{end_date.isoformat()}')
+    filename = '_'.join(filename_parts) + '.csv'
+    
+    # Return as streaming response
+    output.seek(0)
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type='text/csv',
+        headers={
+            'Content-Disposition': f'attachment; filename="{filename}"'
+        }
     )
 
 
@@ -246,7 +327,7 @@ def get_weekly_chart_data(
         accounts=accounts,
         merchant=merchant,
         exclude_transfers=exclude_transfers,
-        person_id=ctx.person_id
+        workspace_id=ctx.workspace_id
     )
     
     # Transform results to response format
@@ -291,7 +372,7 @@ def get_monthly_chart_data(
         accounts=accounts,
         merchant=merchant,
         exclude_transfers=exclude_transfers,
-        person_id=ctx.person_id
+        workspace_id=ctx.workspace_id
     )
     
     # Transform results to response format
@@ -430,8 +511,8 @@ def get_merchants(
     # Build base query with filters
     base_filter = [Transaction.user_id == ctx.user_id]
     
-    if ctx.person_id is not None:
-        base_filter.append(Transaction.person_id == ctx.person_id)
+    if ctx.workspace_id is not None:
+        base_filter.append(Transaction.workspace_id == ctx.workspace_id)
     if start_date:
         base_filter.append(Transaction.date >= start_date)
     if end_date:

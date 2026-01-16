@@ -77,7 +77,7 @@ def generate_insights(
         db=ctx.db,
         user_id=ctx.user_id,
         period_days=period_days,
-        person_id=str(ctx.person_id) if ctx.person_id else None,
+        workspace_id=str(ctx.workspace_id) if ctx.workspace_id else None,
     )
     
     return report.to_dict()
@@ -98,7 +98,7 @@ def get_spending_trends(
         db=ctx.db,
         user_id=ctx.user_id,
         period_days=period_days,
-        person_id=str(ctx.person_id) if ctx.person_id else None,
+        workspace_id=str(ctx.workspace_id) if ctx.workspace_id else None,
     )
     
     trend_insights = [
@@ -128,7 +128,7 @@ def get_category_insights(
         db=ctx.db,
         user_id=ctx.user_id,
         period_days=period_days,
-        person_id=str(ctx.person_id) if ctx.person_id else None,
+        workspace_id=str(ctx.workspace_id) if ctx.workspace_id else None,
     )
     
     category_insights = [
@@ -157,7 +157,7 @@ def get_anomalies(
         db=ctx.db,
         user_id=ctx.user_id,
         period_days=period_days,
-        person_id=str(ctx.person_id) if ctx.person_id else None,
+        workspace_id=str(ctx.workspace_id) if ctx.workspace_id else None,
     )
     
     anomaly_insights = [
@@ -186,7 +186,7 @@ def get_savings_opportunities(
         db=ctx.db,
         user_id=ctx.user_id,
         period_days=period_days,
-        person_id=str(ctx.person_id) if ctx.person_id else None,
+        workspace_id=str(ctx.workspace_id) if ctx.workspace_id else None,
     )
     
     savings_insights = [
@@ -214,14 +214,14 @@ def save_current_insights(
         db=ctx.db,
         user_id=ctx.user_id,
         period_days=period_days,
-        person_id=str(ctx.person_id) if ctx.person_id else None,
+        workspace_id=str(ctx.workspace_id) if ctx.workspace_id else None,
     )
     
     saved = InsightsService.save_insights(
         db=ctx.db,
         user_id=ctx.user_id,
         report=report,
-        person_id=str(ctx.person_id) if ctx.person_id else None,
+        workspace_id=str(ctx.workspace_id) if ctx.workspace_id else None,
     )
     
     return {
@@ -246,7 +246,7 @@ def get_saved_insights(
         user_id=ctx.user_id,
         include_dismissed=include_dismissed,
         limit=limit,
-        person_id=str(ctx.person_id) if ctx.person_id else None,
+        workspace_id=str(ctx.workspace_id) if ctx.workspace_id else None,
     )
     
     return {

@@ -527,7 +527,7 @@ export default function TransactionsPage() {
             value={stats.net}
             format="currency"
             gradient
-            gradientType={stats.net >= 0 ? "success" : "expense"}
+            gradientType={stats.net >= 0 ? "income" : "expense"}
             changeType={stats.net >= 0 ? "increase" : "decrease"}
             icon={
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">

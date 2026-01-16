@@ -46,7 +46,7 @@ class TransactionService:
         accounts: Optional[List[str]] = None,
         merchant: Optional[str] = None,
         exclude_transfers: bool = False,
-        person_id: Optional[int] = None
+        workspace_id: Optional[int] = None
     ):
         """
         Apply consistent base filters to any transaction query.
@@ -60,7 +60,7 @@ class TransactionService:
             accounts: List of accounts to filter by
             merchant: Substring to search in merchant names
             exclude_transfers: Whether to exclude 'Transfer Between My Accounts'
-            person_id: Person ID for person-level data isolation (if None, uses user_id only)
+            workspace_id: Workspace ID for workspace-level data isolation (if None, uses user_id only)
         
         Returns:
             Filtered query object
@@ -70,9 +70,9 @@ class TransactionService:
         # ALWAYS filter by user_id for multi-tenant isolation
         query = query.filter(Transaction.user_id == user_id)
         
-        # Filter by person_id if provided (for multi-person isolation)
-        if person_id is not None:
-            query = query.filter(Transaction.person_id == person_id)
+        # Filter by workspace_id if provided (for multi-person isolation)
+        if workspace_id is not None:
+            query = query.filter(Transaction.workspace_id == workspace_id)
         
         # Exclude internal transfers if requested
         if exclude_transfers:
@@ -112,7 +112,7 @@ class TransactionService:
         page_size: int = 50,
         sort_by: str = 'date',
         sort_order: str = 'desc',
-        person_id: Optional[int] = None
+        workspace_id: Optional[int] = None
     ) -> Tuple[List[Transaction], int]:
         """
         Get paginated transactions with consistent filtering.
@@ -131,7 +131,7 @@ class TransactionService:
             accounts=accounts,
             merchant=merchant,
             exclude_transfers=exclude_transfers,
-            person_id=person_id
+            workspace_id=workspace_id
         )
         
         # Get total count
@@ -166,7 +166,7 @@ class TransactionService:
         accounts: Optional[List[str]] = None,
         merchant: Optional[str] = None,
         exclude_transfers: bool = False,
-        person_id: Optional[int] = None
+        workspace_id: Optional[int] = None
     ):
         """
         Get weekly aggregated data with consistent filtering.
@@ -191,7 +191,7 @@ class TransactionService:
             accounts=accounts,
             merchant=merchant,
             exclude_transfers=exclude_transfers,
-            person_id=person_id
+            workspace_id=workspace_id
         )
         
         # Group by week and category
@@ -212,7 +212,7 @@ class TransactionService:
         accounts: Optional[List[str]] = None,
         merchant: Optional[str] = None,
         exclude_transfers: bool = False,
-        person_id: Optional[int] = None
+        workspace_id: Optional[int] = None
     ):
         """
         Get monthly aggregated data with consistent filtering.
@@ -237,7 +237,7 @@ class TransactionService:
             accounts=accounts,
             merchant=merchant,
             exclude_transfers=exclude_transfers,
-            person_id=person_id
+            workspace_id=workspace_id
         )
         
         # Group by month and category

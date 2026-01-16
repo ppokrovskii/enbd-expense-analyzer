@@ -65,12 +65,12 @@ async def trigger_recategorization(ctx: FilteredQueryContext = Depends(get_filte
     
     Uses PgQueuer with PostgreSQL LISTEN/NOTIFY for efficient event-driven processing.
     """
-    logger.info(f"🔄 POST /recategorize | user_id={ctx.user_id} person_id={ctx.person_id}")
+    logger.info(f"🔄 POST /recategorize | user_id={ctx.user_id} workspace_id={ctx.workspace_id}")
     
     if USE_PGQUEUER:
         from .tasks import enqueue_recategorization
         try:
-            job_id = await enqueue_recategorization(ctx.user_id, ctx.person_id)
+            job_id = await enqueue_recategorization(ctx.user_id, ctx.workspace_id)
             logger.info(f"✅ Recategorization job enqueued (pgqueuer) | job_id={job_id}")
             return TriggerJobResponse(job_id=job_id, status="queued")
         except Exception as e:
@@ -131,7 +131,7 @@ async def apply_rules(
     # Sync mode always uses threading (for tests)
     if sync:
         job_id = JobService.create_rule_apply_job(
-            ctx.db, ctx.user_id, request.rule_ids, run_sync=True, person_id=ctx.person_id
+            ctx.db, ctx.user_id, request.rule_ids, run_sync=True, workspace_id=ctx.workspace_id
         )
         job = JobService.get_job_status(ctx.db, job_id)
         result_msg = f"Applied {len(request.rule_ids)} rule(s): {job.result.get('transactions_updated', 0)} transactions updated" if job and job.result else "Completed"
@@ -147,7 +147,7 @@ async def apply_rules(
     if USE_PGQUEUER:
         from .tasks import enqueue_apply_rules
         try:
-            job_id = await enqueue_apply_rules(ctx.user_id, request.rule_ids, ctx.person_id)
+            job_id = await enqueue_apply_rules(ctx.user_id, request.rule_ids, ctx.workspace_id)
             logger.info(f"✅ Apply-rules job enqueued (pgqueuer) | job_id={job_id}")
             return ApplyRulesResponse(
                 job_id=job_id,
@@ -160,7 +160,7 @@ async def apply_rules(
     
     # Fallback to threading
     job_id = JobService.create_rule_apply_job(
-        ctx.db, ctx.user_id, request.rule_ids, run_sync=False, person_id=ctx.person_id
+        ctx.db, ctx.user_id, request.rule_ids, run_sync=False, workspace_id=ctx.workspace_id
     )
     logger.info(f"✅ Apply-rules job created (threading) | job_id={job_id}")
     return ApplyRulesResponse(

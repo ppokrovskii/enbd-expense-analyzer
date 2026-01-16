@@ -50,19 +50,19 @@ def get_section_types():
 
 @router.get("/")
 def list_reports(
-    person_id: Optional[int] = Query(None, description="Filter by person ID"),
+    workspace_id: Optional[int] = Query(None, description="Filter by person ID"),
     limit: int = Query(50, ge=1, le=100),
     ctx: FilteredQueryContext = Depends(get_filtered_context),
 ):
     """
     List all reports for the current user.
     By default shows reports from ALL persons.
-    Optionally filter by person_id.
+    Optionally filter by workspace_id.
     """
     reports = ReportService.list_reports(
         db=ctx.db,
         user_id=ctx.user_id,
-        person_id=person_id,
+        workspace_id=workspace_id,
         limit=limit,
     )
     
@@ -81,13 +81,13 @@ def create_report(
     Create a new empty report with auto-generated name.
     Creates a default Summary section.
     """
-    # Use provided person_id or active person
-    person_id = request.person_id if request.person_id is not None else ctx.person_id
+    # Use provided workspace_id or active person
+    workspace_id = request.workspace_id if request.workspace_id is not None else ctx.workspace_id
     
     report = ReportService.create_report(
         db=ctx.db,
         user_id=ctx.user_id,
-        person_id=person_id,
+        workspace_id=workspace_id,
         name=request.name,
     )
     

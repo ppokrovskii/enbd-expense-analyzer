@@ -87,19 +87,19 @@ export default function TransactionList({
     fetchCategoryColors();
   }, []);
 
-  // Track person changes to trigger re-fetch
-  const [personVersion, setPersonVersion] = useState(0);
-  
-  // Listen for person changes
+  // Track workspace changes to trigger re-fetch
+  const [workspaceVersion, setWorkspaceVersion] = useState(0);
+
+  // Listen for workspace changes
   useEffect(() => {
-    const handlePersonChange = () => {
-      setPersonVersion(v => v + 1);
+    const handleWorkspaceChange = () => {
+      setWorkspaceVersion(v => v + 1);
       setCurrentPage(1);
       setSelectedMerchants(new Set());
     };
-    
-    window.addEventListener('personChanged', handlePersonChange);
-    return () => window.removeEventListener('personChanged', handlePersonChange);
+
+    window.addEventListener('workspaceChanged', handleWorkspaceChange);
+    return () => window.removeEventListener('workspaceChanged', handleWorkspaceChange);
   }, []);
 
   // Reset to page 1 when filters, selected categories, or sorting changes
@@ -116,7 +116,7 @@ export default function TransactionList({
       accounts: [],
       merchant: ""
     });
-  }, [currentPage, filters, filterMode, filteredCategories, pageSize, sortBy, sortOrder, personVersion]);
+  }, [currentPage, filters, filterMode, filteredCategories, pageSize, sortBy, sortOrder, workspaceVersion]);
   
   // Save page size to localStorage when it changes
   const handlePageSizeChange = (newSize: number) => {
@@ -174,6 +174,54 @@ export default function TransactionList({
     
     // Navigate to Rules Manager page with AI suggestions mode
     window.location.href = '/rules?mode=ai-suggest';
+  };
+
+  const handleExportCSV = () => {
+    const appliedFilters = filters || {
+      startDate: "",
+      endDate: "",
+      categories: [],
+      accounts: [],
+      merchant: ""
+    };
+    
+    const params = new URLSearchParams();
+    params.append("sort_by", sortBy);
+    params.append("sort_order", sortOrder);
+    
+    if (appliedFilters.startDate) params.append("start_date", appliedFilters.startDate);
+    if (appliedFilters.endDate) params.append("end_date", appliedFilters.endDate);
+    if (appliedFilters.merchant) params.append("merchant", appliedFilters.merchant);
+    
+    // Apply same category filtering logic as display
+    if (filterMode === 'whitelist' && filteredCategories.length > 0) {
+      filteredCategories.forEach((cat) => params.append("categories", cat));
+    } else if (filterMode === 'blacklist' && filteredCategories.length > 0 && availableCategories.length > 0) {
+      const includedCategories = availableCategories.filter(cat => !filteredCategories.includes(cat));
+      includedCategories.forEach(cat => params.append("categories", cat));
+    } else if (appliedFilters.categories && appliedFilters.categories.length > 0) {
+      appliedFilters.categories.forEach(cat => params.append("categories", cat));
+    }
+    
+    appliedFilters.accounts.forEach(acc => params.append("accounts", acc));
+    
+    // Trigger download
+    const url = `${API_URL}/api/transactions/export?${params.toString()}`;
+    
+    // Create a temporary link with auth headers via fetch
+    fetch(url, { headers: getApiHeaders() })
+      .then(response => response.blob())
+      .then(blob => {
+        const downloadUrl = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = downloadUrl;
+        a.download = `transactions_${new Date().toISOString().split('T')[0]}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.URL.revokeObjectURL(downloadUrl);
+      })
+      .catch(err => console.error('Export failed:', err));
   };
 
   const fetchTransactions = async (page: number, appliedFilters: FilterValues) => {
@@ -401,7 +449,7 @@ export default function TransactionList({
   }
 
   // Determine if all merchants on current page are selected
-  const merchantsOnPage = data ? new Set(data.transactions.map(t => t.merchant)) : new Set();
+  const merchantsOnPage = data ? new Set<string>(data.transactions.map(t => t.merchant)) : new Set<string>();
   const allOnPageSelected = merchantsOnPage.size > 0 && Array.from(merchantsOnPage).every(m => selectedMerchants.has(m));
 
   return (
@@ -451,8 +499,20 @@ export default function TransactionList({
             </div>
           </div>
           
-          {/* Right side: AI Button + Pagination */}
+          {/* Right side: Export + AI Button + Pagination */}
           <div className="flex items-center gap-3">
+            {/* Export CSV button */}
+            <button
+              onClick={handleExportCSV}
+              className="px-3 py-1.5 text-sm rounded-lg transition-all flex items-center gap-1.5 font-medium border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-secondary)] hover:text-[var(--color-text-primary)]"
+              title="Export filtered transactions to CSV"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+              </svg>
+              CSV
+            </button>
+            
             {selectedMerchants.size > 0 && (
               <button
                 onClick={handleAICategorizeSelected}

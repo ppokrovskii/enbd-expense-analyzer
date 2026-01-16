@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import PersonSwitcher from "./PersonSwitcher";
+import WorkspaceSwitcher from "./WorkspaceSwitcher";
 
 export default function Navigation() {
   const pathname = usePathname();
@@ -24,7 +24,7 @@ export default function Navigation() {
             >
               Expense Analyzer
             </Link>
-            <PersonSwitcher />
+            <WorkspaceSwitcher />
           </div>
           <div className="flex items-center gap-1">
             <Link 

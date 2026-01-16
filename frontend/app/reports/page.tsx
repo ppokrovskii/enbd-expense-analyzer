@@ -8,14 +8,14 @@ import SkeletonLoader from "../components/ui/SkeletonLoader";
 interface ReportListItem {
   id: string;
   name: string;
-  person_id: number | null;
-  person_name: string | null;
+  workspace_id: number | null;
+  workspace_name: string | null;
   section_count: number;
   created_at: string;
   updated_at: string;
 }
 
-interface Person {
+interface Workspace {
   id: number;
   name: string;
   is_active: boolean;
@@ -24,39 +24,39 @@ interface Person {
 export default function ReportsListPage() {
   const router = useRouter();
   const [reports, setReports] = useState<ReportListItem[]>([]);
-  const [persons, setPersons] = useState<Person[]>([]);
+  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [filterPersonId, setFilterPersonId] = useState<string>("all");
+  const [filterWorkspaceId, setFilterWorkspaceId] = useState<string>("all");
   const [creating, setCreating] = useState(false);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
 
   useEffect(() => {
     fetchReports();
-    fetchPersons();
-  }, [filterPersonId]);
+    fetchWorkspaces();
+  }, [filterWorkspaceId]);
 
   useEffect(() => {
-    const handlePersonChange = () => {
+    const handleWorkspaceChange = () => {
       fetchReports();
     };
-    window.addEventListener('personChanged', handlePersonChange);
-    return () => window.removeEventListener('personChanged', handlePersonChange);
-  }, [filterPersonId]);
+    window.addEventListener('workspaceChanged', handleWorkspaceChange);
+    return () => window.removeEventListener('workspaceChanged', handleWorkspaceChange);
+  }, [filterWorkspaceId]);
 
-  const fetchPersons = async () => {
+  const fetchWorkspaces = async () => {
     try {
-      const response = await fetch(`${API_URL}/api/persons/`, {
+      const response = await fetch(`${API_URL}/api/workspaces/`, {
         headers: getApiHeaders(),
       });
       if (response.ok) {
         const data = await response.json();
-        // API returns array directly, not { persons: [...] }
-        setPersons(Array.isArray(data) ? data : data.persons || []);
+        // API returns array directly, not { workspaces: [...] }
+        setWorkspaces(Array.isArray(data) ? data : data.workspaces || []);
       }
     } catch (err) {
-      console.error('Failed to fetch persons:', err);
+      console.error('Failed to fetch workspaces:', err);
     }
   };
 
@@ -65,8 +65,8 @@ export default function ReportsListPage() {
     setError(null);
     try {
       const params = new URLSearchParams();
-      if (filterPersonId !== "all") {
-        params.set('person_id', filterPersonId);
+      if (filterWorkspaceId !== "all") {
+        params.set('workspace_id', filterWorkspaceId);
       }
       
       const response = await fetch(
@@ -181,9 +181,9 @@ export default function ReportsListPage() {
     });
   };
 
-  // Group reports by person
+  // Group reports by workspace
   const groupedReports = reports.reduce((acc, report) => {
-    const key = report.person_name || 'No Person';
+    const key = report.workspace_name || 'No Workspace';
     if (!acc[key]) acc[key] = [];
     acc[key].push(report);
     return acc;
@@ -196,7 +196,7 @@ export default function ReportsListPage() {
         <div>
           <h1 className="text-title text-[var(--color-text-primary)]">Reports</h1>
           <p className="text-body text-[var(--color-text-secondary)] mt-1">
-            Create and manage financial reports across all persons
+            Create and manage financial reports across all workspaces
           </p>
         </div>
         <button
@@ -240,17 +240,17 @@ export default function ReportsListPage() {
       <div className="card p-4">
         <div className="flex items-center gap-4">
           <label className="text-body text-[var(--color-text-secondary)]">
-            Filter by Person:
+            Filter by Workspace:
           </label>
           <select
-            value={filterPersonId}
-            onChange={(e) => setFilterPersonId(e.target.value)}
+            value={filterWorkspaceId}
+            onChange={(e) => setFilterWorkspaceId(e.target.value)}
             className="input w-auto"
           >
-            <option value="all">All Persons</option>
-            {persons.map((person) => (
-              <option key={person.id} value={person.id}>
-                {person.name} {person.is_active ? '(Active)' : ''}
+            <option value="all">All Workspaces</option>
+            {workspaces.map((workspace) => (
+              <option key={workspace.id} value={workspace.id}>
+                {workspace.name} {workspace.is_active ? '(Active)' : ''}
               </option>
             ))}
           </select>
@@ -262,7 +262,7 @@ export default function ReportsListPage() {
 
       {/* Reports List */}
       {loading ? (
-        <SkeletonLoader variant="list" count={3} />
+        <SkeletonLoader variant="card" count={3} />
       ) : reports.length === 0 ? (
         <div className="card p-12 text-center">
           <svg className="w-16 h-16 mx-auto text-[var(--color-text-tertiary)] mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -282,19 +282,19 @@ export default function ReportsListPage() {
             Create Your First Report
           </button>
         </div>
-      ) : filterPersonId === "all" ? (
+      ) : filterWorkspaceId === "all" ? (
         // Grouped view
         <div className="space-y-6">
-          {Object.entries(groupedReports).map(([personName, personReports]) => (
-            <div key={personName}>
+          {Object.entries(groupedReports).map(([workspaceName, workspaceReports]) => (
+            <div key={workspaceName}>
               <h2 className="text-heading text-[var(--color-text-primary)] mb-3 flex items-center gap-2">
                 <svg className="w-5 h-5 text-[var(--color-primary)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                 </svg>
-                {personName}
+                {workspaceName}
               </h2>
               <div className="space-y-3">
-                {personReports.map((report) => (
+                {workspaceReports.map((report) => (
                   <ReportCard
                     key={report.id}
                     report={report}

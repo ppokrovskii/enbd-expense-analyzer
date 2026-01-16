@@ -1,53 +1,53 @@
 /**
  * API utility functions for making authenticated requests.
- * Handles user and person identification headers automatically.
+ * Handles user and workspace identification headers automatically.
  */
 
 export const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 export const API_BASE_URL = `${API_URL}/api`;
 export const WS_BASE_URL = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8000';
 
-// Store active person_id globally (updated by PersonSwitcher)
-let activePersonId: number | null = null;
+// Store active workspace_id globally (updated by WorkspaceSwitcher)
+let activeWorkspaceId: number | null = null;
 
 // Initialize from localStorage on load
 if (typeof window !== 'undefined') {
-  const stored = localStorage.getItem('activePersonId');
-  if (stored) {
-    activePersonId = parseInt(stored, 10);
+  const storedWorkspace = localStorage.getItem('activeWorkspaceId');
+  if (storedWorkspace) {
+    activeWorkspaceId = parseInt(storedWorkspace, 10);
   }
 }
 
 /**
- * Set the active person ID (called when switching persons)
+ * Set the active workspace ID (called when switching workspaces)
  * Dispatches a custom event so components can re-fetch data
  */
-export function setActivePersonId(personId: number | null): void {
-  const previousPersonId = activePersonId;
-  activePersonId = personId;
+export function setActiveWorkspaceId(workspaceId: number | null): void {
+  const previousWorkspaceId = activeWorkspaceId;
+  activeWorkspaceId = workspaceId;
   if (typeof window !== 'undefined') {
-    if (personId !== null) {
-      localStorage.setItem('activePersonId', String(personId));
+    if (workspaceId !== null) {
+      localStorage.setItem('activeWorkspaceId', String(workspaceId));
     } else {
-      localStorage.removeItem('activePersonId');
+      localStorage.removeItem('activeWorkspaceId');
     }
     
-    // Dispatch event if person changed (so components can re-fetch)
-    if (previousPersonId !== personId) {
-      window.dispatchEvent(new CustomEvent('personChanged', { detail: { personId } }));
+    // Dispatch event if workspace changed (so components can re-fetch)
+    if (previousWorkspaceId !== workspaceId) {
+      window.dispatchEvent(new CustomEvent('workspaceChanged', { detail: { workspaceId } }));
     }
   }
 }
 
 /**
- * Get the active person ID
+ * Get the active workspace ID
  */
-export function getActivePersonId(): number | null {
-  return activePersonId;
+export function getActiveWorkspaceId(): number | null {
+  return activeWorkspaceId;
 }
 
 /**
- * Get headers for API calls including user and person identification
+ * Get headers for API calls including user and workspace identification
  */
 export function getApiHeaders(): Record<string, string> {
   const headers: Record<string, string> = {
@@ -55,8 +55,8 @@ export function getApiHeaders(): Record<string, string> {
     'X-User-Id': 'default_user', // TODO: Get from auth context in production
   };
   
-  if (activePersonId !== null) {
-    headers['X-Person-Id'] = String(activePersonId);
+  if (activeWorkspaceId !== null) {
+    headers['X-Workspace-Id'] = String(activeWorkspaceId);
   }
   
   return headers;
@@ -105,4 +105,3 @@ export function buildQueryString(params: Record<string, any>): string {
   const queryString = searchParams.toString();
   return queryString ? `?${queryString}` : '';
 }
-

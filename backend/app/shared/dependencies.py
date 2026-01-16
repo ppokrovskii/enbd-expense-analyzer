@@ -24,22 +24,22 @@ def get_user_id(x_user_id: Optional[str] = Header(default='default_user')) -> st
     return x_user_id or 'default_user'
 
 
-def get_person_id(x_person_id: Optional[str] = Header(default=None)) -> Optional[int]:
+def get_workspace_id(x_workspace_id: Optional[str] = Header(default=None)) -> Optional[int]:
     """
-    Extract person_id from request headers.
+    Extract workspace_id from request headers.
     
-    The X-Person-Id header should be set by the frontend when a person is active.
-    Returns None if no person_id is provided (for backward compatibility).
+    The X-Workspace-Id header should be set by the frontend when a workspace is active.
+    Returns None if no workspace_id is provided (for backward compatibility).
     
     Args:
-        x_person_id: Person ID from X-Person-Id header
+        x_workspace_id: Workspace ID from X-Workspace-Id header
         
     Returns:
-        Person ID integer or None
+        Workspace ID integer or None
     """
-    if x_person_id is not None and x_person_id != '':
+    if x_workspace_id is not None and x_workspace_id != '':
         try:
-            return int(x_person_id)
+            return int(x_workspace_id)
         except ValueError:
             return None
     return None

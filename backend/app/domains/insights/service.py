@@ -46,7 +46,7 @@ class InsightsService:
         db: Session,
         user_id: str,
         period_days: int = 30,
-        person_id: Optional[str] = None,
+        workspace_id: Optional[str] = None,
         include_llm_descriptions: bool = False,
     ) -> InsightsReport:
         """
@@ -56,7 +56,7 @@ class InsightsService:
             db: Database session
             user_id: User identifier
             period_days: Number of days to analyze
-            person_id: Optional person ID for multi-person filtering
+            workspace_id: Optional person ID for multi-person filtering
             include_llm_descriptions: Whether to generate LLM descriptions
             
         Returns:
@@ -70,8 +70,8 @@ class InsightsService:
         previous_start = start_date - timedelta(days=period_days)
         
         # Fetch transactions
-        transactions = cls._get_transactions(db, user_id, start_date, end_date, person_id)
-        previous_transactions = cls._get_transactions(db, user_id, previous_start, start_date, person_id)
+        transactions = cls._get_transactions(db, user_id, start_date, end_date, workspace_id)
+        previous_transactions = cls._get_transactions(db, user_id, previous_start, start_date, workspace_id)
         
         total_spent = sum(abs(float(t.amount_signed)) for t in transactions if t.amount_signed < 0)
         
@@ -104,7 +104,7 @@ class InsightsService:
         insights.extend(anomaly_insights)
         
         # 4. Recurring transaction insights
-        recurring_insights = cls._analyze_recurring(db, user_id, person_id, start_date, end_date)
+        recurring_insights = cls._analyze_recurring(db, user_id, workspace_id, start_date, end_date)
         insights.extend(recurring_insights)
         
         # 5. Savings opportunities
@@ -137,7 +137,7 @@ class InsightsService:
         user_id: str,
         start_date: date,
         end_date: date,
-        person_id: Optional[str] = None,
+        workspace_id: Optional[str] = None,
     ) -> List[Transaction]:
         """Fetch transactions for the given period."""
         query = db.query(Transaction).filter(
@@ -147,8 +147,8 @@ class InsightsService:
             Transaction.amount_signed < 0,  # Only expenses
         )
         
-        if person_id:
-            query = query.filter(Transaction.person_id == int(person_id))
+        if workspace_id:
+            query = query.filter(Transaction.workspace_id == int(workspace_id))
         
         return query.order_by(Transaction.date).all()
     
@@ -348,14 +348,14 @@ class InsightsService:
         cls,
         db: Session,
         user_id: str,
-        person_id: Optional[str],
+        workspace_id: Optional[str],
         start_date: date,
         end_date: date,
     ) -> List[GeneratedInsight]:
         """Analyze recurring transactions for insights."""
         insights = []
         
-        result = RecurringDetectionService.detect_patterns(db, user_id, person_id=person_id)
+        result = RecurringDetectionService.detect_patterns(db, user_id, workspace_id=workspace_id)
         
         if not result.recurring_groups:
             return insights
@@ -486,7 +486,7 @@ class InsightsService:
         db: Session,
         user_id: str,
         report: InsightsReport,
-        person_id: Optional[str] = None,
+        workspace_id: Optional[str] = None,
     ) -> List[Insight]:
         """Save generated insights to the database."""
         saved = []
@@ -494,7 +494,7 @@ class InsightsService:
         for insight in report.insights:
             db_insight = Insight(
                 user_id=user_id,
-                person_id=int(person_id) if person_id else None,
+                workspace_id=int(workspace_id) if workspace_id else None,
                 insight_type=insight.insight_type.value,
                 severity=insight.severity.value,
                 title=insight.title,
@@ -516,13 +516,13 @@ class InsightsService:
         user_id: str,
         include_dismissed: bool = False,
         limit: int = 50,
-        person_id: Optional[str] = None,
+        workspace_id: Optional[str] = None,
     ) -> List[Insight]:
         """Get saved insights from database."""
         query = db.query(Insight).filter(Insight.user_id == user_id)
         
-        if person_id:
-            query = query.filter(Insight.person_id == int(person_id))
+        if workspace_id:
+            query = query.filter(Insight.workspace_id == int(workspace_id))
         
         if not include_dismissed:
             query = query.filter(Insight.is_dismissed == False)

@@ -58,7 +58,7 @@ from app.domains.chat import router as chat_router
 from app.domains.accounts import router as accounts_router
 from app.domains.jobs import router as jobs_router
 from app.domains.notifications import router as notifications_router
-from app.domains.persons import router as persons_router
+from app.domains.workspaces import router as workspaces_router
 from app.domains.recurring import router as recurring_router
 from app.domains.insights import router as insights_router
 from app.domains.reports import router as reports_router
@@ -72,7 +72,7 @@ from app.domains.categories.models import Category, Rule, LLMCache
 from app.domains.chat.models import ChatSession, ChatMessage, ChatContext, TokenUsage
 from app.domains.accounts.models import UserAccount
 from app.domains.jobs.models import BackgroundJob
-from app.domains.persons.models import Person
+from app.domains.workspaces.models import Workspace
 from app.domains.recurring.models import RecurringGroup, RecurringOccurrence
 from app.domains.insights.models import Insight
 from app.domains.reports.models import Report
@@ -148,7 +148,7 @@ app.include_router(chat_router)          # /api/chat/*
 app.include_router(accounts_router)      # /api/accounts/*
 app.include_router(jobs_router)          # /api/jobs/*
 app.include_router(notifications_router) # /ws
-app.include_router(persons_router)       # /api/persons/*
+app.include_router(workspaces_router)    # /api/workspaces/*
 app.include_router(recurring_router)     # /api/recurring/*
 app.include_router(insights_router)      # /api/insights/*
 app.include_router(reports_router)       # /api/reports/*
@@ -169,7 +169,7 @@ def root():
             "accounts",
             "jobs",
             "notifications",
-            "persons",
+            "workspaces",
             "recurring",
             "insights",
             "reports"

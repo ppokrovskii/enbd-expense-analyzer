@@ -80,7 +80,7 @@ def detect_recurring_patterns(
         user_id=ctx.user_id,
         date_from=date_from,
         date_to=date_to,
-        person_id=str(ctx.person_id) if ctx.person_id else None
+        workspace_id=str(ctx.workspace_id) if ctx.workspace_id else None
     )
     
     return result.to_dict()
@@ -97,7 +97,7 @@ def get_monthly_recurring_total(ctx: FilteredQueryContext = Depends(get_filtered
     total = RecurringDetectionService.get_monthly_recurring_total(
         db=ctx.db,
         user_id=ctx.user_id,
-        person_id=str(ctx.person_id) if ctx.person_id else None
+        workspace_id=str(ctx.workspace_id) if ctx.workspace_id else None
     )
     
     return {"monthly_total": total, "currency": "AED"}
@@ -114,7 +114,7 @@ def get_forgotten_subscriptions(ctx: FilteredQueryContext = Depends(get_filtered
     result = RecurringDetectionService.detect_patterns(
         db=ctx.db,
         user_id=ctx.user_id,
-        person_id=str(ctx.person_id) if ctx.person_id else None
+        workspace_id=str(ctx.workspace_id) if ctx.workspace_id else None
     )
     
     forgotten = [g.to_dict() for g in result.recurring_groups if g.forgotten]
@@ -137,14 +137,14 @@ def save_detected_patterns(ctx: FilteredQueryContext = Depends(get_filtered_cont
     result = RecurringDetectionService.detect_patterns(
         db=ctx.db,
         user_id=ctx.user_id,
-        person_id=str(ctx.person_id) if ctx.person_id else None
+        workspace_id=str(ctx.workspace_id) if ctx.workspace_id else None
     )
     
     saved = RecurringDetectionService.save_recurring_groups(
         db=ctx.db,
         user_id=ctx.user_id,
         result=result,
-        person_id=str(ctx.person_id) if ctx.person_id else None
+        workspace_id=str(ctx.workspace_id) if ctx.workspace_id else None
     )
     
     return {

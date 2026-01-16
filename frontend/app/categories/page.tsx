@@ -6,7 +6,7 @@ import RulesFilter from "../components/categories/RulesFilter";
 import MerchantsGrid from "../components/categories/MerchantsGrid";
 import SparkleIcon from "../components/ui/SparkleIcon";
 import CategoryFilterGrid from "../components/CategoryFilterGrid";
-import { API_URL } from "../utils/api";
+import { API_URL, API_BASE_URL } from "../utils/api";
 
 export interface Category {
   id: number;

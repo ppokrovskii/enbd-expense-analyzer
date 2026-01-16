@@ -78,7 +78,7 @@ class RecurringDetectionService:
         user_id: str,
         date_from: Optional[date] = None,
         date_to: Optional[date] = None,
-        person_id: Optional[str] = None,
+        workspace_id: Optional[str] = None,
     ) -> RecurringDetectionResult:
         """
         Detect recurring transaction patterns for a user.
@@ -88,7 +88,7 @@ class RecurringDetectionService:
             user_id: User identifier
             date_from: Start date for analysis (default: 1 year ago)
             date_to: End date for analysis (default: today)
-            person_id: Optional person ID for multi-person filtering
+            workspace_id: Optional person ID for multi-person filtering
             
         Returns:
             RecurringDetectionResult with detected patterns
@@ -109,8 +109,8 @@ class RecurringDetectionService:
             Transaction.amount_signed < 0,  # Only expenses
         )
         
-        if person_id:
-            query = query.filter(Transaction.person_id == int(person_id))
+        if workspace_id:
+            query = query.filter(Transaction.workspace_id == int(workspace_id))
         
         transactions = query.order_by(Transaction.date).all()
         total_analyzed = len(transactions)
@@ -378,7 +378,7 @@ class RecurringDetectionService:
         cls,
         db: Session,
         user_id: str,
-        person_id: Optional[str] = None
+        workspace_id: Optional[str] = None
     ) -> float:
         """
         Calculate the total monthly recurring expenses.
@@ -388,7 +388,7 @@ class RecurringDetectionService:
         - Weekly subscriptions (multiplied by 4.33)
         - Biweekly subscriptions (multiplied by 2.17)
         """
-        result = cls.detect_patterns(db, user_id, person_id=person_id)
+        result = cls.detect_patterns(db, user_id, workspace_id=workspace_id)
         
         monthly_total = 0.0
         for group in result.recurring_groups:
@@ -414,7 +414,7 @@ class RecurringDetectionService:
         db: Session,
         user_id: str,
         result: RecurringDetectionResult,
-        person_id: Optional[str] = None
+        workspace_id: Optional[str] = None
     ) -> List[RecurringGroup]:
         """
         Save detected recurring groups to the database.
@@ -443,7 +443,7 @@ class RecurringDetectionService:
                 # Create new group
                 group = RecurringGroup(
                     user_id=user_id,
-                    person_id=int(person_id) if person_id else None,
+                    workspace_id=int(workspace_id) if workspace_id else None,
                     pattern_name=detected.pattern_name,
                     merchant=detected.merchant,
                     estimated_amount=detected.estimated_amount,

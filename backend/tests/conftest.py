@@ -13,7 +13,7 @@ from app.domains.categories.models import Category, Rule, LLMCache
 from app.domains.accounts.models import UserAccount
 from app.domains.chat.models import ChatSession, ChatMessage, ChatContext, TokenUsage
 from app.domains.jobs.models import BackgroundJob
-from app.domains.persons.models import Person
+from app.domains.workspaces.models import Workspace
 from app.domains.recurring.models import RecurringGroup, RecurringOccurrence
 from app.domains.insights.models import Insight
 from app.domains.reports.models import Report, ReportSection

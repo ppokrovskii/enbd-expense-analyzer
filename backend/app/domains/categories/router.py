@@ -196,7 +196,7 @@ def create_category(category: CategoryCreate, ctx: FilteredQueryContext = Depend
         raise HTTPException(status_code=400, detail=f"Category '{category.name}' already exists")
     
     new_category = Category(name=category.name, color=category.color)
-    ctx.add(new_category)  # Automatically sets user_id and person_id
+    ctx.add(new_category)  # Automatically sets user_id and workspace_id
     ctx.commit()
     ctx.refresh(new_category)
     
@@ -279,9 +279,9 @@ def list_rules(
         Category, Rule.category_id == Category.id
     ).filter(Rule.user_id == ctx.user_id)
     
-    # Add person_id filter if set
-    if ctx.person_id is not None:
-        query = query.filter(Rule.person_id == ctx.person_id)
+    # Add workspace_id filter if set
+    if ctx.workspace_id is not None:
+        query = query.filter(Rule.workspace_id == ctx.workspace_id)
     
     if category_id:
         query = query.filter(Rule.category_id == category_id)
@@ -377,7 +377,7 @@ def create_rule(rule: RuleCreate, ctx: FilteredQueryContext = Depends(get_filter
             exclude_keywords=rule.exclude_keywords or [],
             priority=rule.priority
         )
-        ctx.add(new_rule)  # Automatically sets user_id and person_id
+        ctx.add(new_rule)  # Automatically sets user_id and workspace_id
         ctx.commit()
         ctx.refresh(new_rule)
     
@@ -451,7 +451,7 @@ def apply_category_rules(
         ctx.db, 
         user_id=ctx.user_id, 
         force_recategorize_all=force_all,
-        person_id=ctx.person_id
+        workspace_id=ctx.workspace_id
     )
     
     return {
@@ -472,8 +472,8 @@ def get_other_category_merchants(
     """Get all merchants in the 'Other' category (uncategorized)."""
     # Build base filter with user/person
     base_filters = [Transaction.user_id == ctx.user_id]
-    if ctx.person_id is not None:
-        base_filters.append(Transaction.person_id == ctx.person_id)
+    if ctx.workspace_id is not None:
+        base_filters.append(Transaction.workspace_id == ctx.workspace_id)
     
     # Date filtering
     if start_date and end_date:
@@ -523,8 +523,8 @@ def get_category_all_merchants(
         Transaction.user_id == ctx.user_id,
         Transaction.category == category.name
     ]
-    if ctx.person_id is not None:
-        base_filters.append(Transaction.person_id == ctx.person_id)
+    if ctx.workspace_id is not None:
+        base_filters.append(Transaction.workspace_id == ctx.workspace_id)
     
     # Date filtering
     if start_date and end_date:
@@ -570,11 +570,11 @@ def ai_bulk_suggest(
         HTTPException with 503 status and user-friendly message on LLM errors
     """
     try:
-        # Pass user_id and person_id so LLM sees user's categories
+        # Pass user_id and workspace_id so LLM sees user's categories
         llm_service = LLMCategorizationService(
             ctx.db, 
             user_id=ctx.user_id, 
-            person_id=ctx.person_id
+            workspace_id=ctx.workspace_id
         )
     except ValueError as e:
         raise HTTPException(
@@ -720,7 +720,7 @@ def ai_bulk_apply(
         if not category:
             if create_new:
                 category = Category(name=category_name, keywords=[])
-                ctx.add(category)  # Automatically sets user_id and person_id
+                ctx.add(category)  # Automatically sets user_id and workspace_id
                 ctx.commit()
                 created_categories.append(category_name)
             else:
@@ -741,7 +741,7 @@ def ai_bulk_apply(
             ctx.db, 
             user_id=ctx.user_id, 
             force_recategorize_all=True, 
-            person_id=ctx.person_id
+            workspace_id=ctx.workspace_id
         )
         transactions_affected += additional_affected
     
@@ -963,8 +963,8 @@ def check_rule_conflicts(
         Category, Rule.category_id == Category.id
     ).filter(Rule.user_id == ctx.user_id)
     
-    if ctx.person_id is not None:
-        query = query.filter(Rule.person_id == ctx.person_id)
+    if ctx.workspace_id is not None:
+        query = query.filter(Rule.workspace_id == ctx.workspace_id)
     
     # Exclude current rule if editing
     if request.rule_id:

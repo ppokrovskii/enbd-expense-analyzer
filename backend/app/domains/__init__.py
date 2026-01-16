@@ -5,7 +5,7 @@ from .chat import router as chat_router
 from .accounts import router as accounts_router
 from .jobs import router as jobs_router
 from .notifications import router as notifications_router
-from .persons import router as persons_router
+from .workspaces import router as workspaces_router
 
 __all__ = [
     'transactions_router',
@@ -14,6 +14,6 @@ __all__ = [
     'accounts_router',
     'jobs_router',
     'notifications_router',
-    'persons_router',
+    'workspaces_router',
 ]
 

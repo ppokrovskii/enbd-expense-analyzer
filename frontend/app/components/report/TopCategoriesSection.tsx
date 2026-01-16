@@ -82,7 +82,7 @@ export default function TopCategoriesSection({ filters, content, onContentChange
   };
 
   if (loading) {
-    return <SkeletonLoader variant="list" count={5} />;
+    return <SkeletonLoader variant="table" count={5} />;
   }
 
   if (categories.length === 0) {

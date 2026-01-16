@@ -1,25 +1,25 @@
 "use client";
 
 import React, { createContext, useContext, useMemo } from 'react';
-import { usePerson } from '../hooks/usePerson';
+import { useWorkspace } from '../hooks/useWorkspace';
 import { API_URL } from '../utils/api';
 
 interface ApiContextValue {
   apiUrl: string;
   getHeaders: () => HeadersInit;
   fetchApi: (endpoint: string, options?: RequestInit) => Promise<Response>;
-  personId: number | null;
+  workspaceId: number | null;
   userId: string;
 }
 
 const ApiContext = createContext<ApiContextValue | null>(null);
 
 export function ApiProvider({ children }: { children: React.ReactNode }) {
-  const { activePerson, loading } = usePerson();
+  const { activeWorkspace, loading } = useWorkspace();
   
   const userId = 'default_user'; // TODO: Get from auth context in production
   
-  const personId = activePerson?.id ?? null;
+  const workspaceId = activeWorkspace?.id ?? null;
   
   const getHeaders = useMemo(() => {
     return (): HeadersInit => {
@@ -28,13 +28,13 @@ export function ApiProvider({ children }: { children: React.ReactNode }) {
         'X-User-Id': userId,
       };
       
-      if (personId !== null) {
-        headers['X-Person-Id'] = String(personId);
+      if (workspaceId !== null) {
+        headers['X-Workspace-Id'] = String(workspaceId);
       }
       
       return headers;
     };
-  }, [userId, personId]);
+  }, [userId, workspaceId]);
   
   const fetchApi = useMemo(() => {
     return async (endpoint: string, options: RequestInit = {}): Promise<Response> => {
@@ -57,7 +57,7 @@ export function ApiProvider({ children }: { children: React.ReactNode }) {
     apiUrl: API_URL,
     getHeaders,
     fetchApi,
-    personId,
+    workspaceId,
     userId,
   };
   
@@ -77,16 +77,15 @@ export function useApi() {
 }
 
 // Export a helper to get headers for components that can't use hooks
-export function getApiHeaders(personId: number | null, userId: string = 'default_user'): HeadersInit {
+export function getApiHeaders(workspaceId: number | null, userId: string = 'default_user'): HeadersInit {
   const headers: HeadersInit = {
     'Content-Type': 'application/json',
     'X-User-Id': userId,
   };
   
-  if (personId !== null) {
-    headers['X-Person-Id'] = String(personId);
+  if (workspaceId !== null) {
+    headers['X-Workspace-Id'] = String(workspaceId);
   }
   
   return headers;
 }
-

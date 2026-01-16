@@ -38,8 +38,8 @@ interface ReportSection {
 interface Report {
   id: string;
   name: string;
-  person_id: number | null;
-  person_name: string | null;
+  workspace_id: number | null;
+  workspace_name: string | null;
   sections: ReportSection[];
   created_at: string;
   updated_at: string;
@@ -550,9 +550,9 @@ export default function ReportEditorPage() {
                 </h1>
               </button>
             )}
-            {report.person_name && (
+            {report.workspace_name && (
               <p className="text-caption text-[var(--color-text-tertiary)] mt-0.5">
-                {report.person_name}
+                {report.workspace_name}
               </p>
             )}
           </div>
@@ -587,8 +587,8 @@ export default function ReportEditorPage() {
         {/* Print header */}
         <div className="hidden print:block mb-8">
           <h1 className="text-2xl font-bold text-[var(--color-text-primary)]">{report.name}</h1>
-          {report.person_name && (
-            <p className="text-[var(--color-text-secondary)]">{report.person_name}</p>
+          {report.workspace_name && (
+            <p className="text-[var(--color-text-secondary)]">{report.workspace_name}</p>
           )}
         </div>
         

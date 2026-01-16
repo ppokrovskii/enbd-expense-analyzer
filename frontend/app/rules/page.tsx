@@ -161,16 +161,16 @@ export default function RulesManagerPage() {
     }
   }, [categoryFilter, searchQuery]);
 
-  // Refresh when person changes
+  // Refresh when workspace changes
   useEffect(() => {
-    const handlePersonChange = () => {
+    const handleWorkspaceChange = () => {
       loadCategories();
       if (!isAIMode) {
         loadRules();
       }
     };
-    window.addEventListener("personChanged", handlePersonChange);
-    return () => window.removeEventListener("personChanged", handlePersonChange);
+    window.addEventListener("workspaceChanged", handleWorkspaceChange);
+    return () => window.removeEventListener("workspaceChanged", handleWorkspaceChange);
   }, [isAIMode]);
 
   const loadCategories = async () => {

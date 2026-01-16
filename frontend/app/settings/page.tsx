@@ -347,7 +347,7 @@ export default function SettingsPage() {
                         )}
                       </div>
                       <div className="text-sm text-[var(--color-text-secondary)]">
-                        {account.bank} • {account.account_number_masked}
+                        {account.bank} • {account.account_number}
                       </div>
                     </div>
                     <button

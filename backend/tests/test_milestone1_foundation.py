@@ -144,23 +144,23 @@ def test_transaction_hash_unique_constraint(test_db):
 
 
 def test_category_name_unique_constraint(test_db):
-    """Test that category name must be unique per user and person.
-    
-    Note: In the new architecture, uniqueness is per (user_id, person_id, name) combination.
+    """Test that category name must be unique per user and workspace.
+
+    Note: In the new architecture, uniqueness is per (user_id, workspace_id, name) combination.
     """
     from datetime import datetime
-    from app.domains.persons.models import Person
-    
-    # Create a person for testing
-    person = Person(user_id='default_user', name='Test Person')
-    test_db.add(person)
+    from app.domains.workspaces.models import Workspace
+
+    # Create a workspace for testing
+    workspace = Workspace(user_id='default_user', name='Test Workspace')
+    test_db.add(workspace)
     test_db.commit()
-    test_db.refresh(person)
-    
+    test_db.refresh(workspace)
+
     # Create first category
     category1 = Category(
         user_id='default_user',
-        person_id=person.id,
+        workspace_id=workspace.id,
         name="Shopping",
         color="#2196F3",
         created_at=datetime.utcnow(),
@@ -169,10 +169,10 @@ def test_category_name_unique_constraint(test_db):
     test_db.add(category1)
     test_db.commit()
     
-    # Try to create duplicate category for same user and person
+    # Try to create duplicate category for same user and workspace
     category2 = Category(
         user_id='default_user',
-        person_id=person.id,
+        workspace_id=workspace.id,
         name="Shopping",
         color="#F44336",
         created_at=datetime.utcnow(),

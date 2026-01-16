@@ -38,25 +38,25 @@ T = TypeVar('T')
 
 class FilteredQueryContext:
     """
-    Provides filtered database queries based on user/person context.
+    Provides filtered database queries based on user/workspace context.
     
     All queries automatically include user_id filtering, and optionally
-    person_id filtering when a person is active.
+    workspace_id filtering when a workspace is active.
     
     Attributes:
         db: SQLAlchemy database session
         user_id: Current user identifier
-        person_id: Optional person identifier (for multi-person support)
+        workspace_id: Optional workspace identifier (for multi-workspace support)
     """
     
-    def __init__(self, db: Session, user_id: str, person_id: Optional[int] = None):
+    def __init__(self, db: Session, user_id: str, workspace_id: Optional[int] = None):
         self.db = db
         self.user_id = user_id
-        self.person_id = person_id
+        self.workspace_id = workspace_id
     
     def query(self, model: Type[T]):
         """
-        Create a query that's automatically filtered by user_id and optionally person_id.
+        Create a query that's automatically filtered by user_id and optionally workspace_id.
         
         Args:
             model: SQLAlchemy model class to query
@@ -74,17 +74,17 @@ class FilteredQueryContext:
         if hasattr(model, 'user_id'):
             q = q.filter(model.user_id == self.user_id)
         
-        # Filter by person_id if provided and model supports it
-        if self.person_id is not None and hasattr(model, 'person_id'):
-            q = q.filter(model.person_id == self.person_id)
+        # Filter by workspace_id if provided and model supports it
+        if self.workspace_id is not None and hasattr(model, 'workspace_id'):
+            q = q.filter(model.workspace_id == self.workspace_id)
         
         return q
     
-    def query_no_person_filter(self, model: Type[T]):
+    def query_no_workspace_filter(self, model: Type[T]):
         """
-        Create a query filtered only by user_id (no person_id filter).
+        Create a query filtered only by user_id (no workspace_id filter).
         
-        Use this for entities that are user-level, not person-level
+        Use this for entities that are user-level, not workspace-level
         (e.g., accounts, user settings).
         
         Args:
@@ -113,9 +113,9 @@ class FilteredQueryContext:
     
     def add(self, obj: T) -> T:
         """
-        Add object with automatic user_id/person_id assignment.
+        Add object with automatic user_id/workspace_id assignment.
         
-        Automatically sets user_id and person_id on the object if:
+        Automatically sets user_id and workspace_id on the object if:
         - The object has those attributes
         - The attributes are not already set
         
@@ -127,14 +127,14 @@ class FilteredQueryContext:
         """
         if hasattr(obj, 'user_id') and not getattr(obj, 'user_id', None):
             obj.user_id = self.user_id
-        if hasattr(obj, 'person_id') and self.person_id is not None and not getattr(obj, 'person_id', None):
-            obj.person_id = self.person_id
+        if hasattr(obj, 'workspace_id') and self.workspace_id is not None and not getattr(obj, 'workspace_id', None):
+            obj.workspace_id = self.workspace_id
         self.db.add(obj)
         return obj
     
     def add_all(self, objects: List[T]) -> List[T]:
         """
-        Add multiple objects with automatic user_id/person_id assignment.
+        Add multiple objects with automatic user_id/workspace_id assignment.
         
         Args:
             objects: List of SQLAlchemy model instances to add
@@ -165,20 +165,20 @@ class FilteredQueryContext:
     
     def get_by_id(self, model: Type[T], id: Any) -> Optional[T]:
         """
-        Get an entity by ID, with automatic user/person filtering.
+        Get an entity by ID, with automatic user/workspace filtering.
         
         Args:
             model: SQLAlchemy model class
             id: Primary key value
             
         Returns:
-            The entity if found and belongs to user/person, None otherwise
+            The entity if found and belongs to user/workspace, None otherwise
         """
         return self.query(model).filter(model.id == id).first()
     
     def get_by_id_user_only(self, model: Type[T], id: Any) -> Optional[T]:
         """
-        Get an entity by ID, filtered by user_id only (no person_id).
+        Get an entity by ID, filtered by user_id only (no workspace_id).
         
         Use for user-level entities like accounts.
         
@@ -189,11 +189,11 @@ class FilteredQueryContext:
         Returns:
             The entity if found and belongs to user, None otherwise
         """
-        return self.query_no_person_filter(model).filter(model.id == id).first()
+        return self.query_no_workspace_filter(model).filter(model.id == id).first()
     
     def update_filtered(self, model: Type[T], filters: dict, values: dict) -> int:
         """
-        Update records matching filters (with automatic user/person filtering).
+        Update records matching filters (with automatic user/workspace filtering).
         
         Args:
             model: SQLAlchemy model class
@@ -213,12 +213,12 @@ class FilteredQueryContext:
 def get_filtered_context(
     db: Session = Depends(get_db),
     x_user_id: Optional[str] = Header(default='default_user', alias='X-User-Id'),
-    x_person_id: Optional[str] = Header(default=None, alias='X-Person-Id')
+    x_workspace_id: Optional[str] = Header(default=None, alias='X-Workspace-Id')
 ) -> FilteredQueryContext:
     """
     FastAPI dependency that provides filtered query context.
     
-    Extracts user_id and person_id from request headers and creates
+    Extracts user_id and workspace_id from request headers and creates
     a FilteredQueryContext for the request.
     
     Usage:
@@ -237,18 +237,18 @@ def get_filtered_context(
         async def get_filtered_context(
             db: Session = Depends(get_db),
             credentials = Depends(security),
-            x_person_id: Optional[str] = Header(default=None, alias='X-Person-Id')
+            x_workspace_id: Optional[str] = Header(default=None, alias='X-Workspace-Id')
         ) -> FilteredQueryContext:
             token_data = verify_token(credentials.credentials)
             user_id = token_data["sub"]  # Auth0 user ID
-            person_id = int(x_person_id) if x_person_id else None
-            return FilteredQueryContext(db, user_id, person_id)
+            workspace_id = int(x_workspace_id) if x_workspace_id else None
+            return FilteredQueryContext(db, user_id, workspace_id)
         
         No changes needed to any router or service code!
     """
     user_id = x_user_id or 'default_user'
-    person_id = int(x_person_id) if x_person_id else None
-    return FilteredQueryContext(db, user_id, person_id)
+    workspace_id = int(x_workspace_id) if x_workspace_id else None
+    return FilteredQueryContext(db, user_id, workspace_id)
 
 
 # Alias for shorter import

@@ -43,8 +43,8 @@ def create_account(
     """
     normalized_name = account.name.lower().replace(" ", "-")
     
-    # Accounts are user-level (shared across persons)
-    existing = ctx.query_no_person_filter(UserAccount).filter(
+    # Accounts are user-level (shared across workspaces)
+    existing = ctx.query_no_workspace_filter(UserAccount).filter(
         UserAccount.account_name == normalized_name
     ).first()
     

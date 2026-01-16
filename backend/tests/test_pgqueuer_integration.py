@@ -16,7 +16,7 @@ from app.main import app
 from app.domains.transactions.models import Transaction
 from app.domains.categories.models import Category, Rule
 from app.domains.jobs.models import BackgroundJob
-from app.domains.persons.models import Person
+from app.domains.workspaces.models import Workspace
 
 
 client = TestClient(app)
@@ -26,24 +26,24 @@ client = TestClient(app)
 # Helper Functions
 # ============================================================================
 
-def create_test_person(db: Session, user_id: str, name: str = "Test Person") -> Person:
-    """Create a test person."""
-    person = Person(user_id=user_id, name=name, is_active=True)
-    db.add(person)
+def create_test_workspace(db: Session, user_id: str, name: str = "Test Workspace") -> Workspace:
+    """Create a test workspace."""
+    workspace = Workspace(user_id=user_id, name=name, is_active=True)
+    db.add(workspace)
     db.commit()
-    db.refresh(person)
-    return person
+    db.refresh(workspace)
+    return workspace
 
 
 def create_test_category(
     db: Session, 
     user_id: str, 
     name: str, 
-    person_id: int = None,
+    workspace_id: int = None,
     color: str = "#000000"
 ) -> Category:
     """Create a test category."""
-    category = Category(user_id=user_id, person_id=person_id, name=name, color=color)
+    category = Category(user_id=user_id, workspace_id=workspace_id, name=name, color=color)
     db.add(category)
     db.commit()
     db.refresh(category)
@@ -55,14 +55,14 @@ def create_test_rule(
     user_id: str, 
     category_id: int, 
     keywords: list,
-    person_id: int = None,
+    workspace_id: int = None,
     priority: int = 1,
     exclude_keywords: list = None
 ) -> Rule:
     """Create a test rule."""
     rule = Rule(
         user_id=user_id,
-        person_id=person_id,
+        workspace_id=workspace_id,
         category_id=category_id,
         keywords=keywords,
         exclude_keywords=exclude_keywords or [],
@@ -80,7 +80,7 @@ def create_test_transactions(
     merchant: str,
     category: str = "Other",
     count: int = 5,
-    person_id: int = None
+    workspace_id: int = None
 ) -> list:
     """Create test transactions."""
     transactions = []
@@ -90,7 +90,7 @@ def create_test_transactions(
         hash_val = hashlib.md5(f"pgq_test_{user_id}_{merchant}_{i}".encode()).hexdigest()[:30]
         txn = Transaction(
             user_id=user_id,
-            person_id=person_id,
+            workspace_id=workspace_id,
             date=start_date + timedelta(days=i),
             account="Credit Card",
             description=f"{merchant} PAYMENT",
@@ -135,16 +135,16 @@ class TestRecategorizeEndpoint:
         assert "job_id" in data
         assert data["status"] in ["pending", "queued"]
     
-    def test_recategorize_with_person_id(self, test_db: Session):
-        """Test recategorize respects person_id filter."""
-        user_id = "recat_person_user"
+    def test_recategorize_with_workspace_id(self, test_db: Session):
+        """Test recategorize respects workspace_id filter."""
+        user_id = "recat_workspace_user"
         
-        # Create person
-        person = create_test_person(test_db, user_id, "Test Person")
+        # Create workspace
+        workspace = create_test_workspace(test_db, user_id, "Test Workspace")
         
         response = client.post(
             "/api/jobs/recategorize",
-            headers={"X-User-Id": user_id, "X-Person-Id": str(person.id)}
+            headers={"X-User-Id": user_id, "X-Workspace-Id": str(workspace.id)}
         )
         
         assert response.status_code == 200
@@ -430,48 +430,48 @@ class TestApplyRulesLogic:
 
 
 # ============================================================================
-# Person Isolation Tests
+# Workspace Isolation Tests
 # ============================================================================
 
-class TestPersonIsolation:
-    """Tests for person-based data isolation in jobs."""
+class TestWorkspaceIsolation:
+    """Tests for workspace-based data isolation in jobs."""
     
-    def test_apply_rules_respects_person_id(self, test_db: Session):
-        """Test that jobs only affect transactions for the specified person."""
-        user_id = "person_isolation_user"
+    def test_apply_rules_respects_workspace_id(self, test_db: Session):
+        """Test that jobs only affect transactions for the specified workspace."""
+        user_id = "workspace_isolation_user"
         
-        # Create two persons
-        person1 = create_test_person(test_db, user_id, "Person 1")
-        person2 = create_test_person(test_db, user_id, "Person 2")
+        # Create two workspaces
+        workspace1 = create_test_workspace(test_db, user_id, "Workspace 1")
+        workspace2 = create_test_workspace(test_db, user_id, "Workspace 2")
         
-        # Create category and rule for person 1
-        category = create_test_category(test_db, user_id, "Person1 Cat", person_id=person1.id)
-        rule = create_test_rule(test_db, user_id, category.id, ["SHOP"], person_id=person1.id)
+        # Create category and rule for workspace 1
+        category = create_test_category(test_db, user_id, "Workspace1 Cat", workspace_id=workspace1.id)
+        rule = create_test_rule(test_db, user_id, category.id, ["SHOP"], workspace_id=workspace1.id)
         
-        # Create transactions for both persons
-        create_test_transactions(test_db, user_id, "SHOP A", person_id=person1.id, count=3)
-        create_test_transactions(test_db, user_id, "SHOP B", person_id=person2.id, count=4)
+        # Create transactions for both workspaces
+        create_test_transactions(test_db, user_id, "SHOP A", workspace_id=workspace1.id, count=3)
+        create_test_transactions(test_db, user_id, "SHOP B", workspace_id=workspace2.id, count=4)
         
-        # Apply rules for person 1 only
+        # Apply rules for workspace 1 only
         response = client.post(
             "/api/jobs/apply-rules?sync=true",
             json={"rule_ids": [rule.id]},
-            headers={"X-User-Id": user_id, "X-Person-Id": str(person1.id)}
+            headers={"X-User-Id": user_id, "X-Workspace-Id": str(workspace1.id)}
         )
         
         job_id = response.json()["job_id"]
         job = test_db.query(BackgroundJob).filter_by(id=job_id).first()
         
-        # Only person 1's transactions should be updated
+        # Only workspace 1's transactions should be updated
         assert job.result["transactions_updated"] == 3
         
-        # Person 2's transactions should remain "Other"
-        person2_other = test_db.query(Transaction).filter(
+        # Workspace 2's transactions should remain "Other"
+        workspace2_other = test_db.query(Transaction).filter(
             Transaction.user_id == user_id,
-            Transaction.person_id == person2.id,
+            Transaction.workspace_id == workspace2.id,
             Transaction.category == "Other"
         ).count()
-        assert person2_other == 4
+        assert workspace2_other == 4
 
 
 # ============================================================================
@@ -595,7 +595,7 @@ class TestPgQueuerModule:
         import json
         
         # Test payload creation
-        payload_data = {"user_id": "test", "person_id": 1, "rule_ids": [1, 2, 3]}
+        payload_data = {"user_id": "test", "workspace_id": 1, "rule_ids": [1, 2, 3]}
         serialized = json.dumps(payload_data).encode()
         deserialized = json.loads(serialized)
         

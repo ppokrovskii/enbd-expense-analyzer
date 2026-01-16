@@ -79,14 +79,14 @@ class CategoryService:
         """Initialize the category service."""
         self.rules_cache = None
     
-    def load_categories(self, db: Session, user_id: str = 'default_user', person_id: Optional[int] = None) -> Dict[str, Dict]:
+    def load_categories(self, db: Session, user_id: str = 'default_user', workspace_id: Optional[int] = None) -> Dict[str, Dict]:
         """
         Load all rules from the rules table (not from categories).
         
         Args:
             db: Database session
             user_id: User ID for filtering rules
-            person_id: Optional person ID for filtering rules
+            workspace_id: Optional person ID for filtering rules
         
         Returns:
             Dict mapping category names to their config (keywords, exclude_keywords)
@@ -96,8 +96,8 @@ class CategoryService:
             Category, Rule.category_id == Category.id
         ).filter(Rule.user_id == user_id)
         
-        if person_id is not None:
-            query = query.filter(Rule.person_id == person_id)
+        if workspace_id is not None:
+            query = query.filter(Rule.workspace_id == workspace_id)
         
         rules_query = query.all()
         
@@ -228,7 +228,7 @@ class CategoryService:
         user_id: str = 'default_user',
         transaction_ids: Optional[List[int]] = None,
         force_recategorize_all: bool = False,
-        person_id: Optional[int] = None
+        workspace_id: Optional[int] = None
     ) -> int:
         """
         Apply category rules to uncategorized transactions (or specified transactions).
@@ -238,13 +238,13 @@ class CategoryService:
             user_id: User ID for filtering rules
             transaction_ids: Optional list of specific transaction IDs to categorize
             force_recategorize_all: If True, recategorize ALL transactions, not just "Other"
-            person_id: Optional person ID for filtering transactions
+            workspace_id: Optional person ID for filtering transactions
         
         Returns:
             Number of transactions categorized
         """
         # Load category rules from rules table
-        rules = self.load_categories(db, user_id, person_id=person_id)
+        rules = self.load_categories(db, user_id, workspace_id=workspace_id)
         
         # Load account variables
         from app.domains.accounts.service import AccountService
@@ -252,8 +252,8 @@ class CategoryService:
         
         # Query transactions
         query = db.query(Transaction).filter(Transaction.user_id == user_id)
-        if person_id is not None:
-            query = query.filter(Transaction.person_id == person_id)
+        if workspace_id is not None:
+            query = query.filter(Transaction.workspace_id == workspace_id)
         if transaction_ids:
             query = query.filter(Transaction.id.in_(transaction_ids))
         elif not force_recategorize_all:

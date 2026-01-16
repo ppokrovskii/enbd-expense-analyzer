@@ -86,19 +86,19 @@ export default function MerchantList({
     fetchCategoryColors();
   }, []);
 
-  // Track person changes to trigger re-fetch
-  const [personVersion, setPersonVersion] = useState(0);
-  
-  // Listen for person changes
+  // Track workspace changes to trigger re-fetch
+  const [workspaceVersion, setWorkspaceVersion] = useState(0);
+
+  // Listen for workspace changes
   useEffect(() => {
-    const handlePersonChange = () => {
-      setPersonVersion(v => v + 1);
+    const handleWorkspaceChange = () => {
+      setWorkspaceVersion(v => v + 1);
       setCurrentPage(1);
       setSelectedMerchants(new Set());
     };
-    
-    window.addEventListener('personChanged', handlePersonChange);
-    return () => window.removeEventListener('personChanged', handlePersonChange);
+
+    window.addEventListener('workspaceChanged', handleWorkspaceChange);
+    return () => window.removeEventListener('workspaceChanged', handleWorkspaceChange);
   }, []);
 
   // Reset to page 1 when filters, selected categories, or sorting changes
@@ -160,7 +160,7 @@ export default function MerchantList({
       accounts: [],
       merchant: ""
     });
-  }, [currentPage, filters, pageSize, sortBy, sortOrder, personVersion, fetchMerchants]);
+  }, [currentPage, filters, pageSize, sortBy, sortOrder, workspaceVersion, fetchMerchants]);
   
   // Save page size to localStorage when it changes
   const handlePageSizeChange = (newSize: number) => {

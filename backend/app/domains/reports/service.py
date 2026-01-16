@@ -13,7 +13,7 @@ from app.domains.reports.models import (
     SectionContent,
     MoveDirection,
 )
-from app.domains.persons.models import Person
+from app.domains.workspaces.models import Workspace
 
 
 class ReportService:
@@ -35,7 +35,7 @@ class ReportService:
         cls,
         db: Session,
         user_id: str,
-        person_id: Optional[int] = None,
+        workspace_id: Optional[int] = None,
         name: Optional[str] = None,
     ) -> Report:
         """
@@ -44,25 +44,25 @@ class ReportService:
         Args:
             db: Database session
             user_id: User identifier
-            person_id: Person ID (uses active person if not provided)
+            workspace_id: Workspace ID (uses active workspace if not provided)
             name: Optional custom name
             
         Returns:
             Created Report with Summary section
         """
-        # Get person for naming
-        person = None
-        if person_id:
-            person = db.query(Person).filter(Person.id == person_id).first()
+        # Get workspace for naming
+        workspace = None
+        if workspace_id:
+            workspace = db.query(Workspace).filter(Workspace.id == workspace_id).first()
         
         # Auto-generate name if not provided
         if not name:
-            name = cls._generate_report_name(db, user_id, person_id, person)
+            name = cls._generate_report_name(db, user_id, workspace_id, workspace)
         
         # Create report
         report = Report(
             user_id=user_id,
-            person_id=person_id,
+            workspace_id=workspace_id,
             name=name,
         )
         db.add(report)
@@ -87,19 +87,19 @@ class ReportService:
         cls,
         db: Session,
         user_id: str,
-        person_id: Optional[int],
-        person: Optional[Person],
+        workspace_id: Optional[int],
+        workspace: Optional[Workspace],
     ) -> str:
-        """Generate auto-name for report: "{Person Name} Report" or "{Person Name} Report 2", etc."""
-        person_name = person.name if person else "My"
-        base_name = f"{person_name} Report"
+        """Generate auto-name for report: "{Workspace Name} Report" or "{Workspace Name} Report 2", etc."""
+        workspace_name = workspace.name if workspace else "My"
+        base_name = f"{workspace_name} Report"
         
         # Count existing reports for this person
         query = db.query(func.count(Report.id)).filter(Report.user_id == user_id)
-        if person_id:
-            query = query.filter(Report.person_id == person_id)
+        if workspace_id:
+            query = query.filter(Report.workspace_id == workspace_id)
         else:
-            query = query.filter(Report.person_id.is_(None))
+            query = query.filter(Report.workspace_id.is_(None))
         
         count = query.scalar() or 0
         
@@ -137,7 +137,7 @@ class ReportService:
         """Get a report by ID with all sections."""
         return db.query(Report).options(
             joinedload(Report.sections),
-            joinedload(Report.person),
+            joinedload(Report.workspace),
         ).filter(
             Report.id == uuid.UUID(report_id),
             Report.user_id == user_id,
@@ -148,7 +148,7 @@ class ReportService:
         cls,
         db: Session,
         user_id: str,
-        person_id: Optional[int] = None,
+        workspace_id: Optional[int] = None,
         limit: int = 50,
     ) -> List[Report]:
         """
@@ -156,11 +156,11 @@ class ReportService:
         Shows reports from ALL persons by default.
         """
         query = db.query(Report).options(
-            joinedload(Report.person),
+            joinedload(Report.workspace),
         ).filter(Report.user_id == user_id)
         
-        if person_id is not None:
-            query = query.filter(Report.person_id == person_id)
+        if workspace_id is not None:
+            query = query.filter(Report.workspace_id == workspace_id)
         
         return query.order_by(Report.updated_at.desc()).limit(limit).all()
 
@@ -218,7 +218,7 @@ class ReportService:
         # Create new report
         new_report = Report(
             user_id=user_id,
-            person_id=original.person_id,
+            workspace_id=original.workspace_id,
             name=f"{original.name} (Copy)",
         )
         db.add(new_report)
@@ -490,7 +490,7 @@ class ReportService:
         return {
             "id": str(report.id),
             "name": report.name,
-            "person_id": report.person_id,
+            "workspace_id": report.workspace_id,
             "person_name": report.person.name if report.person else None,
             "sections": [cls.section_to_response(s) for s in report.sections],
             "created_at": report.created_at.isoformat() if report.created_at else None,
@@ -518,7 +518,7 @@ class ReportService:
         return {
             "id": str(report.id),
             "name": report.name,
-            "person_id": report.person_id,
+            "workspace_id": report.workspace_id,
             "person_name": report.person.name if report.person else None,
             "section_count": len(report.sections) if report.sections else 0,
             "created_at": report.created_at.isoformat() if report.created_at else None,

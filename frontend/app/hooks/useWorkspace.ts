@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
-import { setActivePersonId, API_URL } from '../utils/api';
+import { setActiveWorkspaceId, API_URL } from '../utils/api';
 
-export interface Person {
+export interface Workspace {
   id: number;
   user_id: string;
   name: string;
@@ -10,33 +10,33 @@ export interface Person {
   updated_at: string;
 }
 
-export function usePerson() {
-  const [persons, setPersons] = useState<Person[]>([]);
-  const [activePerson, setActivePerson] = useState<Person | null>(null);
+export function useWorkspace() {
+  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
+  const [activeWorkspace, setActiveWorkspace] = useState<Workspace | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchPersons = useCallback(async () => {
+  const fetchWorkspaces = useCallback(async () => {
     try {
       setLoading(true);
-      const response = await fetch(`${API_URL}/api/persons/`, {
+      const response = await fetch(`${API_URL}/api/workspaces/`, {
         headers: {
           'X-User-Id': 'default_user',
         },
       });
       
       if (!response.ok) {
-        throw new Error('Failed to fetch persons');
+        throw new Error('Failed to fetch workspaces');
       }
       
       const data = await response.json();
-      setPersons(data);
+      setWorkspaces(data);
       
-      // Find the active person
-      const active = data.find((p: Person) => p.is_active);
+      // Find the active workspace
+      const active = data.find((w: Workspace) => w.is_active);
       if (active) {
-        setActivePerson(active);
-        setActivePersonId(active.id);  // Update global person_id for API calls
+        setActiveWorkspace(active);
+        setActiveWorkspaceId(active.id);  // Update global workspace_id for API calls
       }
       
       setError(null);
@@ -47,20 +47,20 @@ export function usePerson() {
     }
   }, []);
 
-  const fetchActivePerson = useCallback(async () => {
+  const fetchActiveWorkspace = useCallback(async () => {
     try {
-      const response = await fetch(`${API_URL}/api/persons/active`, {
+      const response = await fetch(`${API_URL}/api/workspaces/active`, {
         headers: {
           'X-User-Id': 'default_user',
         },
       });
       
       if (!response.ok) {
-        throw new Error('Failed to fetch active person');
+        throw new Error('Failed to fetch active workspace');
       }
       
       const data = await response.json();
-      setActivePerson(data);
+      setActiveWorkspace(data);
       return data;
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');
@@ -68,9 +68,9 @@ export function usePerson() {
     }
   }, []);
 
-  const switchPerson = useCallback(async (personId: number) => {
+  const switchWorkspace = useCallback(async (workspaceId: number) => {
     try {
-      const response = await fetch(`${API_URL}/api/persons/${personId}/activate`, {
+      const response = await fetch(`${API_URL}/api/workspaces/${workspaceId}/activate`, {
         method: 'PUT',
         headers: {
           'X-User-Id': 'default_user',
@@ -78,26 +78,26 @@ export function usePerson() {
       });
       
       if (!response.ok) {
-        throw new Error('Failed to switch person');
+        throw new Error('Failed to switch workspace');
       }
       
       const data = await response.json();
-      setActivePerson(data);
-      setActivePersonId(data.id);  // Update global person_id for API calls
+      setActiveWorkspace(data);
+      setActiveWorkspaceId(data.id);  // Update global workspace_id for API calls
       
       // Refresh the list to update is_active flags
-      await fetchPersons();
+      await fetchWorkspaces();
       
       return data;
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');
       return null;
     }
-  }, [fetchPersons]);
+  }, [fetchWorkspaces]);
 
-  const createPerson = useCallback(async (name: string) => {
+  const createWorkspace = useCallback(async (name: string) => {
     try {
-      const response = await fetch(`${API_URL}/api/persons/`, {
+      const response = await fetch(`${API_URL}/api/workspaces/`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -107,24 +107,24 @@ export function usePerson() {
       });
       
       if (!response.ok) {
-        throw new Error('Failed to create person');
+        throw new Error('Failed to create workspace');
       }
       
       const data = await response.json();
       
       // Refresh the list
-      await fetchPersons();
+      await fetchWorkspaces();
       
       return data;
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');
       return null;
     }
-  }, [fetchPersons]);
+  }, [fetchWorkspaces]);
 
-  const deletePerson = useCallback(async (personId: number) => {
+  const deleteWorkspace = useCallback(async (workspaceId: number) => {
     try {
-      const response = await fetch(`${API_URL}/api/persons/${personId}`, {
+      const response = await fetch(`${API_URL}/api/workspaces/${workspaceId}`, {
         method: 'DELETE',
         headers: {
           'X-User-Id': 'default_user',
@@ -132,22 +132,22 @@ export function usePerson() {
       });
       
       if (!response.ok) {
-        throw new Error('Failed to delete person');
+        throw new Error('Failed to delete workspace');
       }
       
       // Refresh the list
-      await fetchPersons();
+      await fetchWorkspaces();
       
       return true;
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');
       return false;
     }
-  }, [fetchPersons]);
+  }, [fetchWorkspaces]);
 
-  const updatePerson = useCallback(async (personId: number, name: string) => {
+  const updateWorkspace = useCallback(async (workspaceId: number, name: string) => {
     try {
-      const response = await fetch(`${API_URL}/api/persons/${personId}`, {
+      const response = await fetch(`${API_URL}/api/workspaces/${workspaceId}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -157,50 +157,49 @@ export function usePerson() {
       });
       
       if (!response.ok) {
-        throw new Error('Failed to update person');
+        throw new Error('Failed to update workspace');
       }
       
       const data = await response.json();
       
       // Refresh the list
-      await fetchPersons();
+      await fetchWorkspaces();
       
       return data;
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');
       return null;
     }
-  }, [fetchPersons]);
+  }, [fetchWorkspaces]);
 
   useEffect(() => {
-    fetchPersons();
-  }, [fetchPersons]);
+    fetchWorkspaces();
+  }, [fetchWorkspaces]);
 
-  // Helper to get headers for API calls that include person_id
+  // Helper to get headers for API calls that include workspace_id
   const getApiHeaders = (): Record<string, string> => {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       'X-User-Id': 'default_user',
     };
     
-    if (activePerson?.id) {
-      headers['X-Person-Id'] = String(activePerson.id);
+    if (activeWorkspace?.id) {
+      headers['X-Workspace-Id'] = String(activeWorkspace.id);
     }
     
     return headers;
   };
 
   return {
-    persons,
-    activePerson,
+    workspaces,
+    activeWorkspace,
     loading,
     error,
-    switchPerson,
-    createPerson,
-    deletePerson,
-    updatePerson,
-    refresh: fetchPersons,
+    switchWorkspace,
+    createWorkspace,
+    deleteWorkspace,
+    updateWorkspace,
+    refresh: fetchWorkspaces,
     getApiHeaders,
   };
 }
-

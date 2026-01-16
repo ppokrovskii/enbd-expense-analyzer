@@ -2,7 +2,7 @@
 
 import { useMemo, useCallback, useState, useEffect, useRef } from "react";
 import SpendingChart from "../SpendingChart";
-import { usePerson } from "../../hooks/usePerson";
+import { useWorkspace } from "../../hooks/useWorkspace";
 import { API_URL } from "../../utils/api";
 
 interface SectionFilters {
@@ -28,7 +28,7 @@ export default function ExpenseOverviewSection({ filters, content, onContentChan
   const [isGenerating, setIsGenerating] = useState(false);
   const [localTakeaway, setLocalTakeaway] = useState(content.takeaway || '');
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
-  const { activePerson } = usePerson();
+  const { activeWorkspace } = useWorkspace();
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const savedTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -109,8 +109,8 @@ export default function ExpenseOverviewSection({ filters, content, onContentChan
       const params = new URLSearchParams({
         period_days: periodDays.toString(),
       });
-      if (activePerson?.id) {
-        params.append('person_id', activePerson.id.toString());
+      if (activeWorkspace?.id) {
+        params.append('workspace_id', activeWorkspace.id.toString());
       }
 
       const response = await fetch(`${API_URL}/api/insights/generate?${params}`, {

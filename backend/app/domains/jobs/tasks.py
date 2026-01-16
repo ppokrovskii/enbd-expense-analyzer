@@ -67,7 +67,7 @@ async def init_pgqueuer(database_url: str) -> PgQueuer:
         await run_recategorization_task(
             job_id=job.id,
             user_id=payload.get("user_id"),
-            person_id=payload.get("person_id")
+            workspace_id=payload.get("workspace_id")
         )
     
     @pgq.entrypoint("apply_rules")
@@ -78,7 +78,7 @@ async def init_pgqueuer(database_url: str) -> PgQueuer:
         await run_apply_rules_task(
             job_id=job.id,
             user_id=payload.get("user_id"),
-            person_id=payload.get("person_id"),
+            workspace_id=payload.get("workspace_id"),
             rule_ids=payload.get("rule_ids", [])
         )
     
@@ -86,14 +86,14 @@ async def init_pgqueuer(database_url: str) -> PgQueuer:
     return pgq
 
 
-async def enqueue_recategorization(user_id: str, person_id: Optional[int] = None) -> str:
+async def enqueue_recategorization(user_id: str, workspace_id: Optional[int] = None) -> str:
     """Enqueue a recategorization job."""
     global pgq
     if not pgq:
         raise RuntimeError("PgQueuer not initialized")
     
     import json
-    payload = json.dumps({"user_id": user_id, "person_id": person_id}).encode()
+    payload = json.dumps({"user_id": user_id, "workspace_id": workspace_id}).encode()
     
     from pgqueuer.queries import Queries
     from pgqueuer import AsyncpgDriver
@@ -108,14 +108,14 @@ async def enqueue_recategorization(user_id: str, person_id: Optional[int] = None
     )
     job_id = str(job_ids[0]) if job_ids else "unknown"
     
-    logger.info(f"📋 Enqueued recategorization job | job_id={job_id} user_id={user_id} person_id={person_id}")
+    logger.info(f"📋 Enqueued recategorization job | job_id={job_id} user_id={user_id} workspace_id={workspace_id}")
     return job_id
 
 
 async def enqueue_apply_rules(
     user_id: str, 
     rule_ids: List[int], 
-    person_id: Optional[int] = None
+    workspace_id: Optional[int] = None
 ) -> str:
     """Enqueue a rule application job."""
     global pgq
@@ -123,7 +123,7 @@ async def enqueue_apply_rules(
         raise RuntimeError("PgQueuer not initialized")
     
     import json
-    payload = json.dumps({"user_id": user_id, "person_id": person_id, "rule_ids": rule_ids}).encode()
+    payload = json.dumps({"user_id": user_id, "workspace_id": workspace_id, "rule_ids": rule_ids}).encode()
     
     from pgqueuer.queries import Queries
     driver = pgq._driver
@@ -143,17 +143,17 @@ async def enqueue_apply_rules(
 async def run_recategorization_task(
     job_id: int,
     user_id: str,
-    person_id: Optional[int] = None
+    workspace_id: Optional[int] = None
 ) -> None:
     """
     Execute recategorization task.
     
-    Applies all rules to all transactions for a user/person.
+    Applies all rules to all transactions for a user/workspace.
     """
     from app.domains.notifications.manager import ws_manager
     
     start_time = time.time()
-    logger.info(f"🔄 [Recategorize] Starting | job_id={job_id} user_id={user_id} person_id={person_id}")
+    logger.info(f"🔄 [Recategorize] Starting | job_id={job_id} user_id={user_id} workspace_id={workspace_id}")
     
     db = SessionLocal()
     try:
@@ -163,13 +163,13 @@ async def run_recategorization_task(
         
         # Load categorization rules
         category_service = CategoryService()
-        rules = category_service.load_categories(db, user_id, person_id=person_id)
+        rules = category_service.load_categories(db, user_id, workspace_id=workspace_id)
         logger.info(f"📋 [Recategorize] Loaded {len(rules)} categorization rules | job_id={job_id}")
         
         # Load transactions
         query = db.query(Transaction).filter(Transaction.user_id == user_id)
-        if person_id:
-            query = query.filter(Transaction.person_id == person_id)
+        if workspace_id:
+            query = query.filter(Transaction.workspace_id == workspace_id)
         transactions = query.all()
         total = len(transactions)
         
@@ -238,7 +238,7 @@ async def run_recategorization_task(
 async def run_apply_rules_task(
     job_id: int,
     user_id: str,
-    person_id: Optional[int],
+    workspace_id: Optional[int],
     rule_ids: List[int]
 ) -> None:
     """
@@ -291,8 +291,8 @@ async def run_apply_rules_task(
                 Transaction.category == 'Other'
             )
         )
-        if person_id:
-            query = query.filter(Transaction.person_id == person_id)
+        if workspace_id:
+            query = query.filter(Transaction.workspace_id == workspace_id)
         transactions = query.all()
         
         total = len(transactions)

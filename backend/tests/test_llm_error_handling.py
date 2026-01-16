@@ -82,7 +82,7 @@ class TestAIBulkSuggestErrorResponses:
         response = client.post(
             "/api/categories/ai-bulk-suggest",
             json={"merchants": ["TEST MERCHANT"], "days": 30, "level": "global", "limit": 10},
-            headers={"X-User-Id": "test-user", "X-Person-Id": "1"}
+            headers={"X-User-Id": "test-user", "X-Workspace-Id": "1"}
         )
         
         assert response.status_code == 503
@@ -102,7 +102,7 @@ class TestAIBulkSuggestErrorResponses:
         response = client.post(
             "/api/categories/ai-bulk-suggest",
             json={"merchants": ["TEST MERCHANT"], "days": 30, "level": "global", "limit": 10},
-            headers={"X-User-Id": "test-user", "X-Person-Id": "1"}
+            headers={"X-User-Id": "test-user", "X-Workspace-Id": "1"}
         )
         
         assert response.status_code == 503

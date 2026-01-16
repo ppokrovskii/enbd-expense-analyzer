@@ -13,7 +13,7 @@ from app.domains.reports.models import (
     MoveDirection,
 )
 from app.domains.reports.service import ReportService
-from app.domains.persons.models import Person
+from app.domains.workspaces.models import Workspace
 
 
 class TestReportServiceUnit:
@@ -101,48 +101,48 @@ class TestReportServiceIntegration:
         return "test-user-reports"
 
     @pytest.fixture
-    def test_person(self, db_session, test_user_id):
-        """Create a test person."""
-        person = Person(
+    def test_workspace(self, db_session, test_user_id):
+        """Create a test workspace."""
+        workspace = Workspace(
             user_id=test_user_id,
-            name="Test Person",
+            name="Test Workspace",
             is_active=True
         )
-        db_session.add(person)
+        db_session.add(workspace)
         db_session.commit()
-        db_session.refresh(person)
-        return person
+        db_session.refresh(workspace)
+        return workspace
 
-    def test_create_report_auto_name(self, db_session, test_user_id, test_person):
+    def test_create_report_auto_name(self, db_session, test_user_id, test_workspace):
         """Creating a report auto-generates name."""
         report = ReportService.create_report(
             db=db_session,
             user_id=test_user_id,
-            person_id=test_person.id,
+            workspace_id=test_workspace.id,
         )
         
         assert report is not None
-        assert report.name == f"{test_person.name} Report"
-        assert report.person_id == test_person.id
+        assert report.name == f"{test_workspace.name} Report"
+        assert report.workspace_id == test_workspace.id
 
-    def test_create_report_with_custom_name(self, db_session, test_user_id, test_person):
+    def test_create_report_with_custom_name(self, db_session, test_user_id, test_workspace):
         """Creating a report with custom name uses it."""
         custom_name = "Q1 2025 Financial Report"
         report = ReportService.create_report(
             db=db_session,
             user_id=test_user_id,
-            person_id=test_person.id,
+            workspace_id=test_workspace.id,
             name=custom_name,
         )
         
         assert report.name == custom_name
 
-    def test_create_report_has_summary_section(self, db_session, test_user_id, test_person):
+    def test_create_report_has_summary_section(self, db_session, test_user_id, test_workspace):
         """New report automatically has a Summary section."""
         report = ReportService.create_report(
             db=db_session,
             user_id=test_user_id,
-            person_id=test_person.id,
+            workspace_id=test_workspace.id,
         )
         
         # Refresh to load sections
@@ -152,29 +152,29 @@ class TestReportServiceIntegration:
         assert report.sections[0].section_type == SectionType.SUMMARY.value
         assert report.sections[0].position == 0
 
-    def test_create_report_sequential_naming(self, db_session, test_user_id, test_person):
+    def test_create_report_sequential_naming(self, db_session, test_user_id, test_workspace):
         """Multiple reports get sequential naming."""
         report1 = ReportService.create_report(
             db=db_session,
             user_id=test_user_id,
-            person_id=test_person.id,
+            workspace_id=test_workspace.id,
         )
         
         report2 = ReportService.create_report(
             db=db_session,
             user_id=test_user_id,
-            person_id=test_person.id,
+            workspace_id=test_workspace.id,
         )
         
-        assert report1.name == f"{test_person.name} Report"
-        assert report2.name == f"{test_person.name} Report 2"
+        assert report1.name == f"{test_workspace.name} Report"
+        assert report2.name == f"{test_workspace.name} Report 2"
 
-    def test_add_section(self, db_session, test_user_id, test_person):
+    def test_add_section(self, db_session, test_user_id, test_workspace):
         """Adding a section to a report."""
         report = ReportService.create_report(
             db=db_session,
             user_id=test_user_id,
-            person_id=test_person.id,
+            workspace_id=test_workspace.id,
         )
         
         section = ReportService.add_section(
@@ -188,12 +188,12 @@ class TestReportServiceIntegration:
         assert section.section_type == SectionType.EXPENSE_OVERVIEW.value
         assert section.position == 1  # After Summary
 
-    def test_add_multiple_same_section_type(self, db_session, test_user_id, test_person):
+    def test_add_multiple_same_section_type(self, db_session, test_user_id, test_workspace):
         """Can add multiple sections of same type."""
         report = ReportService.create_report(
             db=db_session,
             user_id=test_user_id,
-            person_id=test_person.id,
+            workspace_id=test_workspace.id,
         )
         
         section1 = ReportService.add_section(
@@ -214,12 +214,12 @@ class TestReportServiceIntegration:
         assert section1.position == 1
         assert section2.position == 2
 
-    def test_update_section_custom_title(self, db_session, test_user_id, test_person):
+    def test_update_section_custom_title(self, db_session, test_user_id, test_workspace):
         """Update section with custom title."""
         report = ReportService.create_report(
             db=db_session,
             user_id=test_user_id,
-            person_id=test_person.id,
+            workspace_id=test_workspace.id,
         )
         
         section = ReportService.add_section(
@@ -239,12 +239,12 @@ class TestReportServiceIntegration:
         
         assert updated.custom_title == "My Top Categories"
 
-    def test_delete_section_not_summary(self, db_session, test_user_id, test_person):
+    def test_delete_section_not_summary(self, db_session, test_user_id, test_workspace):
         """Can delete non-Summary sections."""
         report = ReportService.create_report(
             db=db_session,
             user_id=test_user_id,
-            person_id=test_person.id,
+            workspace_id=test_workspace.id,
         )
         
         section = ReportService.add_section(
@@ -263,12 +263,12 @@ class TestReportServiceIntegration:
         
         assert success is True
 
-    def test_cannot_delete_summary_section(self, db_session, test_user_id, test_person):
+    def test_cannot_delete_summary_section(self, db_session, test_user_id, test_workspace):
         """Cannot delete Summary section."""
         report = ReportService.create_report(
             db=db_session,
             user_id=test_user_id,
-            person_id=test_person.id,
+            workspace_id=test_workspace.id,
         )
         
         db_session.refresh(report)
@@ -283,12 +283,12 @@ class TestReportServiceIntegration:
         
         assert success is False
 
-    def test_move_section_down(self, db_session, test_user_id, test_person):
+    def test_move_section_down(self, db_session, test_user_id, test_workspace):
         """Move section down."""
         report = ReportService.create_report(
             db=db_session,
             user_id=test_user_id,
-            person_id=test_person.id,
+            workspace_id=test_workspace.id,
         )
         
         section1 = ReportService.add_section(
@@ -320,12 +320,12 @@ class TestReportServiceIntegration:
         assert section1.position == 2
         assert section2.position == 1
 
-    def test_move_section_up(self, db_session, test_user_id, test_person):
+    def test_move_section_up(self, db_session, test_user_id, test_workspace):
         """Move section up."""
         report = ReportService.create_report(
             db=db_session,
             user_id=test_user_id,
-            person_id=test_person.id,
+            workspace_id=test_workspace.id,
         )
         
         section1 = ReportService.add_section(
@@ -357,12 +357,12 @@ class TestReportServiceIntegration:
         assert section2.position == 1
         assert section1.position == 2
 
-    def test_cannot_move_summary_section(self, db_session, test_user_id, test_person):
+    def test_cannot_move_summary_section(self, db_session, test_user_id, test_workspace):
         """Cannot move Summary section."""
         report = ReportService.create_report(
             db=db_session,
             user_id=test_user_id,
-            person_id=test_person.id,
+            workspace_id=test_workspace.id,
         )
         
         db_session.refresh(report)
@@ -378,29 +378,29 @@ class TestReportServiceIntegration:
         
         assert success is False
 
-    def test_list_reports_all_persons(self, db_session, test_user_id, test_person):
-        """List reports shows all persons' reports."""
-        # Create another person
-        person2 = Person(
+    def test_list_reports_all_workspaces(self, db_session, test_user_id, test_workspace):
+        """List reports shows all workspaces' reports."""
+        # Create another workspace
+        workspace2 = Workspace(
             user_id=test_user_id,
-            name="Second Person",
+            name="Second Workspace",
             is_active=False
         )
-        db_session.add(person2)
+        db_session.add(workspace2)
         db_session.commit()
-        db_session.refresh(person2)
+        db_session.refresh(workspace2)
         
-        # Create reports for both persons
+        # Create reports for both workspaces
         report1 = ReportService.create_report(
             db=db_session,
             user_id=test_user_id,
-            person_id=test_person.id,
+            workspace_id=test_workspace.id,
         )
         
         report2 = ReportService.create_report(
             db=db_session,
             user_id=test_user_id,
-            person_id=person2.id,
+            workspace_id=workspace2.id,
         )
         
         # List all
@@ -413,48 +413,48 @@ class TestReportServiceIntegration:
         assert str(report1.id) in report_ids
         assert str(report2.id) in report_ids
 
-    def test_list_reports_filter_by_person(self, db_session, test_user_id, test_person):
-        """List reports can filter by person."""
-        # Create another person
-        person2 = Person(
+    def test_list_reports_filter_by_workspace(self, db_session, test_user_id, test_workspace):
+        """List reports can filter by workspace."""
+        # Create another workspace
+        workspace2 = Workspace(
             user_id=test_user_id,
-            name="Another Person",
+            name="Another Workspace",
             is_active=False
         )
-        db_session.add(person2)
+        db_session.add(workspace2)
         db_session.commit()
-        db_session.refresh(person2)
+        db_session.refresh(workspace2)
         
         # Create reports
         report1 = ReportService.create_report(
             db=db_session,
             user_id=test_user_id,
-            person_id=test_person.id,
+            workspace_id=test_workspace.id,
         )
         
         report2 = ReportService.create_report(
             db=db_session,
             user_id=test_user_id,
-            person_id=person2.id,
+            workspace_id=workspace2.id,
         )
         
-        # Filter by first person
+        # Filter by first workspace
         reports = ReportService.list_reports(
             db=db_session,
             user_id=test_user_id,
-            person_id=test_person.id,
+            workspace_id=test_workspace.id,
         )
         
         assert len(reports) == 1
         assert str(reports[0].id) == str(report1.id)
 
-    def test_duplicate_report(self, db_session, test_user_id, test_person):
+    def test_duplicate_report(self, db_session, test_user_id, test_workspace):
         """Duplicate a report."""
         # Create original
         original = ReportService.create_report(
             db=db_session,
             user_id=test_user_id,
-            person_id=test_person.id,
+            workspace_id=test_workspace.id,
             name="Original Report",
         )
         
@@ -481,12 +481,12 @@ class TestReportServiceIntegration:
         # Should have 2 sections (Summary + Insights)
         assert len(duplicate.sections) == 2
 
-    def test_update_report_name(self, db_session, test_user_id, test_person):
+    def test_update_report_name(self, db_session, test_user_id, test_workspace):
         """Update report name."""
         report = ReportService.create_report(
             db=db_session,
             user_id=test_user_id,
-            person_id=test_person.id,
+            workspace_id=test_workspace.id,
         )
         
         updated = ReportService.update_report(
@@ -498,12 +498,12 @@ class TestReportServiceIntegration:
         
         assert updated.name == "Updated Report Name"
 
-    def test_delete_report(self, db_session, test_user_id, test_person):
+    def test_delete_report(self, db_session, test_user_id, test_workspace):
         """Delete a report."""
         report = ReportService.create_report(
             db=db_session,
             user_id=test_user_id,
-            person_id=test_person.id,
+            workspace_id=test_workspace.id,
         )
         report_id = str(report.id)
         
@@ -525,19 +525,19 @@ class TestReportSectionFilters:
 
     def test_section_inherits_summary_filters(self, test_db, test_user):
         """New sections inherit filters from Summary."""
-        from app.domains.persons.models import Person
+        from app.domains.workspaces.models import Workspace
         
-        # Create person
-        person = Person(user_id=test_user, name="Filter Test Person", is_active=True)
-        test_db.add(person)
+        # Create workspace
+        workspace = Workspace(user_id=test_user, name="Filter Test Workspace", is_active=True)
+        test_db.add(workspace)
         test_db.commit()
-        test_db.refresh(person)
+        test_db.refresh(workspace)
         
         # Create report (gets Summary with default filters)
         report = ReportService.create_report(
             db=test_db,
             user_id=test_user,
-            person_id=person.id,
+            workspace_id=workspace.id,
         )
         
         # Update Summary filters
