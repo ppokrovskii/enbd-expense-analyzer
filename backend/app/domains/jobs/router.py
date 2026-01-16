@@ -131,7 +131,7 @@ async def apply_rules(
     # Sync mode always uses threading (for tests)
     if sync:
         job_id = JobService.create_rule_apply_job(
-            ctx.db, ctx.user_id, request.rule_ids, run_sync=True
+            ctx.db, ctx.user_id, request.rule_ids, run_sync=True, person_id=ctx.person_id
         )
         job = JobService.get_job_status(ctx.db, job_id)
         result_msg = f"Applied {len(request.rule_ids)} rule(s): {job.result.get('transactions_updated', 0)} transactions updated" if job and job.result else "Completed"
@@ -160,7 +160,7 @@ async def apply_rules(
     
     # Fallback to threading
     job_id = JobService.create_rule_apply_job(
-        ctx.db, ctx.user_id, request.rule_ids, run_sync=False
+        ctx.db, ctx.user_id, request.rule_ids, run_sync=False, person_id=ctx.person_id
     )
     logger.info(f"✅ Apply-rules job created (threading) | job_id={job_id}")
     return ApplyRulesResponse(

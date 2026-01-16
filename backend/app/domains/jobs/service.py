@@ -54,7 +54,8 @@ class JobService:
         db: Session, 
         user_id: str, 
         rule_ids: List[int],
-        run_sync: bool = False
+        run_sync: bool = False,
+        person_id: Optional[int] = None
     ) -> str:
         """
         Create a background job to apply specific rules to matching transactions.
@@ -69,16 +70,17 @@ class JobService:
             run_sync: If True, run synchronously (for testing). Default False for background.
         """
         job_id = str(uuid4())
-        logger.info(f"📋 Creating rule-apply job | job_id={job_id} user_id={user_id} rule_ids={rule_ids} sync={run_sync}")
+        logger.info(f"📋 Creating rule-apply job | job_id={job_id} user_id={user_id} person_id={person_id} rule_ids={rule_ids} sync={run_sync}")
         
         job = BackgroundJob(
             id=job_id,
             user_id=user_id,
+            person_id=person_id,
             job_type="rule_apply",
             status="pending",
             progress=0,
             processed_items=0,
-            job_params={"rule_ids": rule_ids}
+            job_params={"rule_ids": rule_ids, "person_id": person_id}
         )
         db.add(job)
         db.commit()
@@ -86,12 +88,12 @@ class JobService:
         if run_sync:
             # Run synchronously (useful for testing)
             logger.debug(f"🔄 Running rule-apply synchronously | job_id={job_id}")
-            JobService._run_rule_apply_sync(db, job_id, user_id, rule_ids)
+            JobService._run_rule_apply_sync(db, job_id, user_id, rule_ids, person_id)
         else:
             # Run in background thread
             thread = threading.Thread(
                 target=JobService._run_rule_apply,
-                args=(job_id, user_id, rule_ids),
+                args=(job_id, user_id, rule_ids, person_id),
                 daemon=True
             )
             thread.start()
@@ -100,7 +102,7 @@ class JobService:
         return job_id
     
     @staticmethod
-    def _run_rule_apply_sync(db: Session, job_id: str, user_id: str, rule_ids: List[int]):
+    def _run_rule_apply_sync(db: Session, job_id: str, user_id: str, rule_ids: List[int], person_id: Optional[int] = None):
         """Synchronous version of rule apply for testing."""
         from app.domains.notifications.manager import ws_manager
         
@@ -141,15 +143,18 @@ class JobService:
         # Load account variables
         account_vars = AccountService.get_account_variables(db, user_id)
         
-        # Query uncategorized/Other transactions
-        transactions = db.query(Transaction).filter(
+        # Query uncategorized/Other transactions (filter by person_id if specified)
+        txn_query = db.query(Transaction).filter(
             Transaction.user_id == user_id,
             or_(
                 Transaction.category.is_(None),
                 Transaction.category == '',
                 Transaction.category == 'Other'
             )
-        ).all()
+        )
+        if person_id is not None:
+            txn_query = txn_query.filter(Transaction.person_id == person_id)
+        transactions = txn_query.all()
         
         total = len(transactions)
         job.total_items = total
@@ -198,7 +203,7 @@ class JobService:
         db.commit()
     
     @staticmethod
-    def _run_rule_apply(job_id: str, user_id: str, rule_ids: List[int]):
+    def _run_rule_apply(job_id: str, user_id: str, rule_ids: List[int], person_id: Optional[int] = None):
         """
         Background worker that applies specific rules to matching transactions.
         
@@ -207,7 +212,7 @@ class JobService:
         from app.domains.notifications.manager import ws_manager
         
         start_time = time.time()
-        logger.info(f"🔄 [RuleApply] Starting job | job_id={job_id} user_id={user_id} rule_ids={rule_ids}")
+        logger.info(f"🔄 [RuleApply] Starting job | job_id={job_id} user_id={user_id} person_id={person_id} rule_ids={rule_ids}")
         
         db = SessionLocal()
         try:
@@ -255,21 +260,24 @@ class JobService:
             account_vars = AccountService.get_account_variables(db, user_id)
             logger.debug(f"📦 [RuleApply] Loaded {len(account_vars)} account variables | job_id={job_id}")
             
-            # Query uncategorized/Other transactions
-            transactions = db.query(Transaction).filter(
+            # Query uncategorized/Other transactions (filter by person_id if specified)
+            txn_query = db.query(Transaction).filter(
                 Transaction.user_id == user_id,
                 or_(
                     Transaction.category.is_(None),
                     Transaction.category == '',
                     Transaction.category == 'Other'
                 )
-            ).all()
+            )
+            if person_id is not None:
+                txn_query = txn_query.filter(Transaction.person_id == person_id)
+            transactions = txn_query.all()
             
             total = len(transactions)
             job.total_items = total
             db.commit()
             
-            logger.info(f"📊 [RuleApply] Found {total} uncategorized transactions to process | job_id={job_id}")
+            logger.info(f"📊 [RuleApply] Found {total} uncategorized transactions to process | job_id={job_id} person_id={person_id}")
             
             updated_count = 0
             rules_applied: Dict[str, int] = {}  # category -> count
