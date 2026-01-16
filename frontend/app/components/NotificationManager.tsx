@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useCallback } from 'react';
-import { useWebSocket, JobProgressMessage, JobCompleteMessage, JobFailedMessage } from '../hooks/useWebSocket';
+import { useWebSocket, JobProgressMessage, JobCompleteMessage, JobFailedMessage, RulesAppliedMessage } from '../hooks/useWebSocket';
 import { useToast } from '../hooks/useToast';
 
 interface JobNotification {
@@ -93,11 +93,22 @@ export function NotificationManager({ userId }: { userId: string }) {
     }, 10000);
   }, [showToast]);
 
+  const handleRulesApplied = useCallback((message: RulesAppliedMessage) => {
+    // Show the pre-formatted toast message from the server
+    if (message.transactions_updated > 0) {
+      showToast(message.toast_message, 'success');
+    }
+    
+    // Remove any progress notification for this job
+    setNotifications((prev) => prev.filter((n) => n.id !== message.job_id));
+  }, [showToast]);
+
   const { isConnected } = useWebSocket({
     userId,
     onJobProgress: handleJobProgress,
     onJobComplete: handleJobComplete,
     onJobFailed: handleJobFailed,
+    onRulesApplied: handleRulesApplied,
   });
 
   const dismissNotification = (id: string) => {

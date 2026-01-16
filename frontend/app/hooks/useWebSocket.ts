@@ -25,7 +25,15 @@ export interface JobFailedMessage {
   error: string;
 }
 
-export type WebSocketMessage = JobProgressMessage | JobCompleteMessage | JobFailedMessage;
+export interface RulesAppliedMessage {
+  type: 'rules_applied';
+  job_id: string;
+  transactions_updated: number;
+  by_category: Record<string, number>;
+  toast_message: string;
+}
+
+export type WebSocketMessage = JobProgressMessage | JobCompleteMessage | JobFailedMessage | RulesAppliedMessage;
 
 interface UseWebSocketOptions {
   userId: string;
@@ -33,6 +41,7 @@ interface UseWebSocketOptions {
   onJobProgress?: (message: JobProgressMessage) => void;
   onJobComplete?: (message: JobCompleteMessage) => void;
   onJobFailed?: (message: JobFailedMessage) => void;
+  onRulesApplied?: (message: RulesAppliedMessage) => void;
   autoReconnect?: boolean;
   reconnectInterval?: number;
 }
@@ -43,6 +52,7 @@ export function useWebSocket({
   onJobProgress,
   onJobComplete,
   onJobFailed,
+  onRulesApplied,
   autoReconnect = true,
   reconnectInterval = 3000,
 }: UseWebSocketOptions) {
@@ -96,6 +106,9 @@ export function useWebSocket({
             case 'job_failed':
               onJobFailed?.(message);
               break;
+            case 'rules_applied':
+              onRulesApplied?.(message);
+              break;
           }
         } catch (error) {
           console.error('[WebSocket] Failed to parse message:', error);
@@ -125,7 +138,7 @@ export function useWebSocket({
       console.error('[WebSocket] Connection error:', error);
       setIsConnected(false);
     }
-  }, [userId, autoReconnect, reconnectInterval, onMessage, onJobProgress, onJobComplete, onJobFailed]);
+  }, [userId, autoReconnect, reconnectInterval, onMessage, onJobProgress, onJobComplete, onJobFailed, onRulesApplied]);
 
   const disconnect = useCallback(() => {
     shouldReconnectRef.current = false;

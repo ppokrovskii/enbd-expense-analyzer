@@ -74,6 +74,7 @@ class RuleResponse(BaseModel):
 class RuleCreateResponse(BaseModel):
     rule: RuleResponse
     transactions_affected: int
+    job_id: Optional[str] = None  # If async job was triggered
 
 
 class RuleWithCategoryResponse(BaseModel):
@@ -319,7 +320,18 @@ def list_rules(
 
 @router.post("/rules/", response_model=RuleCreateResponse, status_code=status.HTTP_201_CREATED)
 def create_rule(rule: RuleCreate, ctx: FilteredQueryContext = Depends(get_filtered_context)):
-    """Create a new categorization rule and optionally apply it to existing transactions."""
+    """Create a new categorization rule and optionally apply it to existing transactions.
+    
+    When auto_apply=True (default), triggers a background job that:
+    1. Finds all transactions matching the rule's keywords
+    2. Updates their category
+    3. Sends a WebSocket notification with results
+    
+    The response returns immediately with job_id. Listen for WebSocket
+    'rules_applied' message for the completion notification with toast.
+    """
+    from app.domains.jobs.service import JobService
+    
     category = ctx.get_by_id(Category, rule.category_id)
     if not category:
         raise HTTPException(status_code=404, detail="Category not found")
@@ -334,44 +346,23 @@ def create_rule(rule: RuleCreate, ctx: FilteredQueryContext = Depends(get_filter
     ctx.commit()
     ctx.refresh(new_rule)
     
+    job_id = None
     transactions_affected = 0
     
-    # Auto-apply rule to existing transactions
+    # Auto-apply rule via background job (async with WebSocket notification)
     if rule.auto_apply:
-        # Build query to find matching transactions
-        from sqlalchemy import and_
-        
-        # Match transactions where merchant contains ANY of the keywords (case-insensitive)
-        keyword_conditions = []
-        for keyword in rule.keywords:
-            keyword_conditions.append(
-                func.lower(Transaction.merchant).contains(keyword.lower())
-            )
-        
-        if keyword_conditions:
-            query = ctx.query(Transaction).filter(or_(*keyword_conditions))
-            
-            # Exclude transactions matching exclude_keywords
-            for exclude_kw in (rule.exclude_keywords or []):
-                query = query.filter(
-                    ~func.lower(Transaction.merchant).contains(exclude_kw.lower())
-                )
-            
-            # Update matching transactions
-            transactions_affected = query.update(
-                {"category": category.name},
-                synchronize_session=False
-            )
-            ctx.commit()
-            
-            if transactions_affected > 0:
-                import logging
-                logger = logging.getLogger("llm_service")
-                logger.info(f"✅ Rule #{new_rule.id} applied: {transactions_affected} transactions → {category.name}")
+        print(f"🚀 Triggering background job to apply rule #{new_rule.id} ({rule.keywords})")
+        job_id = JobService.create_rule_apply_job(
+            ctx.db, 
+            ctx.user_id, 
+            [new_rule.id],
+            run_sync=False  # Run async with WebSocket notifications
+        )
     
     return RuleCreateResponse(
         rule=RuleResponse.model_validate(new_rule),
-        transactions_affected=transactions_affected
+        transactions_affected=transactions_affected,  # Will be 0, actual count comes via WebSocket
+        job_id=job_id
     )
 
 
