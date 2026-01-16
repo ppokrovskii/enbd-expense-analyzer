@@ -168,17 +168,29 @@ class JobService:
                 if var_value:
                     search_text = search_text.replace(var_value.upper(), f"${{{var_name}}}")
             
-            # Check each rule (sorted by priority)
-            matched_category = None
-            for rule_id, rule_data in sorted(rule_category_map.items(), key=lambda x: x[1]["priority"], reverse=True):
+            # Collect ALL matching rules with their specificity (keyword length)
+            # This implements "longest match wins" - more specific rules beat generic ones
+            matches = []  # [(category, keyword_length, priority, rule_id), ...]
+            for rule_id, rule_data in rule_category_map.items():
                 excluded = any(kw in search_text for kw in rule_data["exclude_keywords"])
                 if excluded:
                     continue
                 
-                matched = any(kw in search_text for kw in rule_data["keywords"])
-                if matched:
-                    matched_category = rule_data["category_name"]
-                    break
+                # Find the longest matching keyword for this rule
+                for kw in rule_data["keywords"]:
+                    if kw in search_text:
+                        matches.append((
+                            rule_data["category_name"],
+                            len(kw),  # Specificity: longer = more specific
+                            rule_data["priority"],
+                            rule_id
+                        ))
+            
+            # Sort by: 1) keyword length (longest wins), 2) priority (higher wins)
+            matched_category = None
+            if matches:
+                matches.sort(key=lambda x: (x[1], x[2]), reverse=True)
+                matched_category = matches[0][0]
             
             # Update if matched and category is different (allows recategorization)
             if matched_category and txn.category != matched_category:
@@ -295,21 +307,32 @@ class JobService:
                     if var_value:
                         search_text = search_text.replace(var_value.upper(), f"${{{var_name}}}")
                 
-                # Check each rule (sorted by priority)
-                matched_category = None
-                matched_rule_id = None
-                for rule_id, rule_data in sorted(rule_category_map.items(), key=lambda x: x[1]["priority"], reverse=True):
+                # Collect ALL matching rules with their specificity (keyword length)
+                # This implements "longest match wins" - more specific rules beat generic ones
+                matches = []  # [(category, keyword_length, priority, rule_id), ...]
+                for rule_id, rule_data in rule_category_map.items():
                     # Check exclude keywords first
                     excluded = any(kw in search_text for kw in rule_data["exclude_keywords"])
                     if excluded:
                         continue
                     
-                    # Check match keywords
-                    matched = any(kw in search_text for kw in rule_data["keywords"])
-                    if matched:
-                        matched_category = rule_data["category_name"]
-                        matched_rule_id = rule_id
-                        break
+                    # Find the longest matching keyword for this rule
+                    for kw in rule_data["keywords"]:
+                        if kw in search_text:
+                            matches.append((
+                                rule_data["category_name"],
+                                len(kw),  # Specificity: longer = more specific
+                                rule_data["priority"],
+                                rule_id
+                            ))
+                
+                # Sort by: 1) keyword length (longest wins), 2) priority (higher wins)
+                matched_category = None
+                matched_rule_id = None
+                if matches:
+                    matches.sort(key=lambda x: (x[1], x[2]), reverse=True)
+                    matched_category = matches[0][0]
+                    matched_rule_id = matches[0][3]
                 
                 if matched_category and txn.category != matched_category:
                     logger.debug(f"   ✓ Match: txn_id={txn.id} rule_id={matched_rule_id} '{txn.merchant or txn.details[:30] if txn.details else '?'}...' → {matched_category}")
