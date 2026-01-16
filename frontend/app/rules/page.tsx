@@ -428,11 +428,19 @@ export default function RulesManagerPage() {
             keywords,
             exclude_keywords: excludeKeywords,
             priority: editingRule.edited_priority,
+            auto_apply: true,
           }),
         });
         
         if (!response.ok) throw new Error("Failed to create rule");
-        showToast("Rule created successfully");
+        
+        const result = await response.json();
+        const affected = result.transactions_affected || 0;
+        if (affected > 0) {
+          showToast(`Rule created! ${affected} transaction${affected !== 1 ? 's' : ''} updated`);
+        } else {
+          showToast("Rule created successfully");
+        }
       } else {
         const response = await fetch(`${API_URL}/api/rules/${editingRule.id}`, {
           method: "PUT",
@@ -510,17 +518,27 @@ export default function RulesManagerPage() {
           keywords,
           exclude_keywords: [],
           priority: 0,
+          auto_apply: true,
         }),
       });
       
       if (!response.ok) throw new Error("Failed to create rule");
+      
+      const result = await response.json();
+      const transactionsAffected = result.transactions_affected || 0;
       
       // Mark as applied
       setAiSuggestions(prev => 
         prev.map(s => s.id === suggestion.id ? { ...s, status: "applied" as const } : s)
       );
       setAppliedCount(prev => prev + 1);
-      showToast(`Rule created for ${suggestion.merchant}`);
+      
+      // Show toast with transaction count
+      if (transactionsAffected > 0) {
+        showToast(`Rule created! ${transactionsAffected} transaction${transactionsAffected !== 1 ? 's' : ''} updated to "${suggestion.edited_category}"`);
+      } else {
+        showToast(`Rule created for ${suggestion.merchant}`);
+      }
       
       // Remove after animation
       setTimeout(() => {

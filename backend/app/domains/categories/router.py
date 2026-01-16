@@ -51,6 +51,7 @@ class RuleCreate(BaseModel):
     keywords: List[str]
     exclude_keywords: Optional[List[str]] = []
     priority: int = 0
+    auto_apply: bool = True  # Automatically apply rule to existing transactions
 
 
 class RuleUpdate(BaseModel):
@@ -68,6 +69,11 @@ class RuleResponse(BaseModel):
     
     class Config:
         from_attributes = True
+
+
+class RuleCreateResponse(BaseModel):
+    rule: RuleResponse
+    transactions_affected: int
 
 
 class RuleWithCategoryResponse(BaseModel):
@@ -311,9 +317,9 @@ def list_rules(
     )
 
 
-@router.post("/rules/", response_model=RuleResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/rules/", response_model=RuleCreateResponse, status_code=status.HTTP_201_CREATED)
 def create_rule(rule: RuleCreate, ctx: FilteredQueryContext = Depends(get_filtered_context)):
-    """Create a new categorization rule."""
+    """Create a new categorization rule and optionally apply it to existing transactions."""
     category = ctx.get_by_id(Category, rule.category_id)
     if not category:
         raise HTTPException(status_code=404, detail="Category not found")
@@ -327,7 +333,46 @@ def create_rule(rule: RuleCreate, ctx: FilteredQueryContext = Depends(get_filter
     ctx.add(new_rule)  # Automatically sets user_id and person_id
     ctx.commit()
     ctx.refresh(new_rule)
-    return new_rule
+    
+    transactions_affected = 0
+    
+    # Auto-apply rule to existing transactions
+    if rule.auto_apply:
+        # Build query to find matching transactions
+        from sqlalchemy import and_
+        
+        # Match transactions where merchant contains ANY of the keywords (case-insensitive)
+        keyword_conditions = []
+        for keyword in rule.keywords:
+            keyword_conditions.append(
+                func.lower(Transaction.merchant).contains(keyword.lower())
+            )
+        
+        if keyword_conditions:
+            query = ctx.query(Transaction).filter(or_(*keyword_conditions))
+            
+            # Exclude transactions matching exclude_keywords
+            for exclude_kw in (rule.exclude_keywords or []):
+                query = query.filter(
+                    ~func.lower(Transaction.merchant).contains(exclude_kw.lower())
+                )
+            
+            # Update matching transactions
+            transactions_affected = query.update(
+                {"category": category.name},
+                synchronize_session=False
+            )
+            ctx.commit()
+            
+            if transactions_affected > 0:
+                import logging
+                logger = logging.getLogger("llm_service")
+                logger.info(f"✅ Rule #{new_rule.id} applied: {transactions_affected} transactions → {category.name}")
+    
+    return RuleCreateResponse(
+        rule=RuleResponse.model_validate(new_rule),
+        transactions_affected=transactions_affected
+    )
 
 
 @router.put("/rules/{rule_id}", response_model=RuleResponse)
