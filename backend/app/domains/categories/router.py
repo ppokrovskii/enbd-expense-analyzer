@@ -498,7 +498,12 @@ def ai_bulk_suggest(
         HTTPException with 503 status and user-friendly message on LLM errors
     """
     try:
-        llm_service = LLMCategorizationService(ctx.db)
+        # Pass user_id and person_id so LLM sees user's categories
+        llm_service = LLMCategorizationService(
+            ctx.db, 
+            user_id=ctx.user_id, 
+            person_id=ctx.person_id
+        )
     except ValueError as e:
         raise HTTPException(
             status_code=400, 

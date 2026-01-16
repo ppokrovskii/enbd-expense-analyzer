@@ -81,9 +81,26 @@ class LLMCategorizationService:
     
     USER_PROMPT_TEMPLATE = "Categorize this merchant: {merchant}"
     
-    def __init__(self, db: Session, api_key: Optional[str] = None, model: Optional[str] = None):
-        """Initialize LLM service."""
+    def __init__(
+        self, 
+        db: Session, 
+        user_id: Optional[str] = None,
+        person_id: Optional[int] = None,
+        api_key: Optional[str] = None, 
+        model: Optional[str] = None
+    ):
+        """Initialize LLM service.
+        
+        Args:
+            db: Database session
+            user_id: User ID to filter categories (if None, uses all categories)
+            person_id: Person ID to filter categories (if None, uses user's categories)
+            api_key: OpenAI API key (defaults to OPENAI_API_KEY env var)
+            model: OpenAI model (defaults to OPENAI_MODEL env var or gpt-4o)
+        """
         self.db = db
+        self.user_id = user_id
+        self.person_id = person_id
         self.api_key = api_key or os.getenv('OPENAI_API_KEY')
         if not self.api_key:
             raise ValueError(
@@ -98,9 +115,18 @@ class LLMCategorizationService:
         self.client = OpenAI(api_key=self.api_key)
     
     def _build_system_prompt(self) -> str:
-        """Build system prompt dynamically from database categories."""
-        categories = self.db.query(Category).all()
+        """Build system prompt dynamically from user's categories."""
+        # Filter categories by user and person if provided
+        query = self.db.query(Category)
+        if self.user_id:
+            query = query.filter(Category.user_id == self.user_id)
+        if self.person_id:
+            query = query.filter(Category.person_id == self.person_id)
+        
+        categories = query.all()
         category_names = [c.name for c in categories] if categories else self.DEFAULT_CATEGORIES
+        
+        print(f"[LLM] Building prompt with {len(category_names)} categories for user={self.user_id}, person={self.person_id}: {category_names}")
         
         if "Other" not in category_names:
             category_names.append("Other")
