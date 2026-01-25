@@ -184,6 +184,18 @@ class ChartDataResponse(BaseModel):
     periods: List[str]  # Unique periods
 
 
+class DailySpendingData(BaseModel):
+    """Daily spending data for heatmap."""
+    date: str  # e.g., "2026-01-20"
+    amount: float
+
+
+class DailyChartResponse(BaseModel):
+    """Response model for daily spending chart/heatmap."""
+    data: List[DailySpendingData]
+    total: float
+
+
 @router.get("/transactions", response_model=TransactionListResponse)
 def get_transactions(
     start_date: Optional[date] = Query(None, description="Filter by start date (inclusive)"),
@@ -408,6 +420,65 @@ def get_monthly_chart_data(
         categories=sorted(list(categories_set)),
         periods=sorted(list(periods_set))
     )
+
+
+@router.get("/chart/daily", response_model=DailyChartResponse)
+def get_daily_chart_data(
+    start_date: Optional[date] = Query(None, description="Filter by start date"),
+    end_date: Optional[date] = Query(None, description="Filter by end date"),
+    ctx: FilteredQueryContext = Depends(get_filtered_context)
+):
+    """
+    Get daily spending totals for heatmap visualization.
+    
+    Returns expenses only, excluding:
+    - Salary
+    - Incoming Transfer  
+    - Transfer Between My Accounts
+    """
+    # Categories to exclude (income and internal transfers)
+    excluded_categories = ['Salary', 'Incoming Transfer', 'Transfer Between My Accounts']
+    
+    # Build query for daily aggregation
+    query = ctx.db.query(
+        Transaction.date,
+        func.sum(func.abs(Transaction.amount_signed)).label('amount')
+    ).filter(
+        Transaction.user_id == ctx.user_id
+    )
+    
+    # Apply workspace filter
+    if ctx.workspace_id is not None:
+        query = query.filter(Transaction.workspace_id == ctx.workspace_id)
+    
+    # Apply date filters
+    if start_date:
+        query = query.filter(Transaction.date >= start_date)
+    if end_date:
+        query = query.filter(Transaction.date <= end_date)
+    
+    # Only include expenses (negative amounts) and exclude income/transfer categories
+    query = query.filter(Transaction.amount_signed < 0)
+    query = query.filter(~Transaction.category.in_(excluded_categories))
+    
+    # Group by date
+    query = query.group_by(Transaction.date).order_by(Transaction.date)
+    
+    results = query.all()
+    
+    # Transform to response format
+    data = []
+    total = 0.0
+    
+    for row in results:
+        amount = float(row.amount) if row.amount else 0.0
+        total += amount
+        data.append(DailySpendingData(
+            date=row.date.isoformat() if row.date else '',
+            amount=amount
+        ))
+    
+    return DailyChartResponse(data=data, total=total)
 
 
 @router.get("/stats/summary")

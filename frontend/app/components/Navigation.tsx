@@ -52,6 +52,31 @@ export default function Navigation() {
               Transactions
             </Link>
             <Link 
+              href="/daily" 
+              className={`
+                px-4 py-2 rounded-lg text-body font-medium transition-apple flex items-center
+                ${isActive("/daily")
+                  ? "bg-[var(--color-bg-tertiary)] text-[var(--color-text-primary)]"
+                  : "text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-bg-tertiary)]/50"
+                }
+              `}
+            >
+              <svg
+                className="w-4 h-4 mr-1.5"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                strokeWidth={2}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z"
+                />
+              </svg>
+              Daily
+            </Link>
+            <Link 
               href="/categories" 
               className={`
                 px-4 py-2 rounded-lg text-body font-medium transition-apple
