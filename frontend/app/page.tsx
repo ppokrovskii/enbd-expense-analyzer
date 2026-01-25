@@ -48,6 +48,9 @@ export default function Home() {
               <h3 className="text-heading text-green-900 mb-2">Upload Successful!</h3>
               <div className="text-body text-green-800 space-y-1">
                 <p><span className="font-semibold">{uploadResult.transactions_added || 0}</span> transactions added</p>
+                {uploadResult.transactions_categorized > 0 && (
+                  <p><span className="font-semibold">{uploadResult.transactions_categorized}</span> auto-categorized</p>
+                )}
                 <p><span className="font-semibold">{uploadResult.duplicates_skipped || 0}</span> duplicates skipped</p>
               </div>
               <div className="mt-4">
