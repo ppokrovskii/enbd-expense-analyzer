@@ -16,6 +16,7 @@ import io
 from app.shared.filtered_query import FilteredQueryContext, get_filtered_context
 from app.shared.database import get_db
 from app.shared.dependencies import get_user_id, get_workspace_id
+from app.domains.categories.service import CategoryService
 from .models import Transaction
 from .service import TransactionService
 from .import_service import MultiBankImportService
@@ -33,6 +34,7 @@ class UploadResponse(BaseModel):
     success: bool
     files_processed: int
     transactions_added: int
+    transactions_categorized: int = 0  # Auto-categorized count
     duplicates_skipped: int
     detected_banks: dict  # filename -> bank name
     unparsed_files: List[dict]  # Files that couldn't be parsed
@@ -102,10 +104,22 @@ async def upload_files(
                     'requires_bank_name': result.get('requires_bank_name', False)
                 })
         
+        # Auto-categorize newly added transactions using existing rules
+        transactions_categorized = 0
+        if total_added > 0:
+            category_service = CategoryService()
+            transactions_categorized = category_service.categorize_transactions(
+                ctx.db,
+                user_id=ctx.user_id,
+                force_recategorize_all=False,  # Only categorize uncategorized ones
+                workspace_id=ctx.workspace_id
+            )
+        
         return UploadResponse(
             success=len(unparsed_files) == 0,  # Success if all files parsed
             files_processed=len(temp_files),
             transactions_added=total_added,
+            transactions_categorized=transactions_categorized,
             duplicates_skipped=total_skipped,
             detected_banks=detected_banks,
             unparsed_files=unparsed_files

@@ -1,5 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  experimental: {
+    missingSuspenseWithCSRBailout: false,
+  },
   async rewrites() {
     // Use backend service name in Docker, localhost for local development
     const apiUrl = process.env.API_URL || 'http://backend:8000';
